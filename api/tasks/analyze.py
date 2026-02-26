@@ -53,13 +53,15 @@ def run_analysis(
             # ----------------------------------------------------------------
             local_input = os.path.join(tmpdir, original_filename)
             import boto3
-            s3 = boto3.client(
+            from botocore.client import Config as BotoConfig
+            r2 = boto3.client(
                 "s3",
-                region_name=settings.aws_region,
-                aws_access_key_id=settings.aws_access_key_id,
-                aws_secret_access_key=settings.aws_secret_access_key,
+                endpoint_url=f"https://{settings.r2_account_id}.r2.cloudflarestorage.com",
+                aws_access_key_id=settings.r2_access_key_id,
+                aws_secret_access_key=settings.r2_secret_access_key,
+                config=BotoConfig(signature_version="s3v4"),
             )
-            s3.download_file(settings.s3_bucket_name, input_s3_key, local_input)
+            r2.download_file(settings.r2_bucket_name, input_s3_key, local_input)
 
             # ----------------------------------------------------------------
             # 2. Extract frames
