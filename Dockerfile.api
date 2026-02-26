@@ -12,7 +12,11 @@ RUN pip install --no-cache-dir -r requirements-api.txt
 
 # Copy only the files this service needs
 COPY celery_app.py ./
+COPY config.py ./
 COPY api/ ./api/
+# compare_coach.py (anthropic-only, no MediaPipe/OpenCV) is used by history routes
+COPY pipeline/compare_coach.py ./pipeline/
+COPY pipeline/__init__.py ./pipeline/
 
 # Run as non-root
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
