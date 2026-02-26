@@ -20,7 +20,7 @@ from api.services import job_store, storage
 
 
 @app.task(bind=True, max_retries=0, name="api.tasks.analyze.run_analysis")
-def run_analysis(self, job_id: str, input_s3_key: str, original_filename: str) -> None:
+def run_analysis(self, job_id: str, input_s3_key: str, original_filename: str, user_id: str = None) -> None:
     """
     Full analysis pipeline as a Celery task.
 

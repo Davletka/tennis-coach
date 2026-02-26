@@ -9,9 +9,10 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 
+from api.auth.dependencies import get_current_user
 from api.models import (
     AnalyzeResponse,
     AngleStatResult,
@@ -30,7 +31,10 @@ _ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
 
 
 @router.post("/analyze", response_model=AnalyzeResponse, status_code=202)
-async def create_analysis(file: UploadFile = File(...)):
+async def create_analysis(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
     """
     Accept an uploaded video, push it to S3, and enqueue a Celery analysis task.
     """
@@ -49,20 +53,23 @@ async def create_analysis(file: UploadFile = File(...)):
     storage.upload_fileobj(file.file, s3_key)
 
     # Create Redis job record
-    job_store.create_job(job_id)
+    user_id = current_user["sub"]
+    job_store.create_job(job_id, user_id=user_id)
 
     # Enqueue Celery task
-    run_analysis.delay(job_id, s3_key, file.filename)
+    run_analysis.delay(job_id, s3_key, file.filename, user_id=user_id)
 
     return AnalyzeResponse(job_id=job_id, status="pending")
 
 
 @router.get("/jobs/{job_id}", response_model=JobStatusResponse)
-async def get_job_status(job_id: str):
+async def get_job_status(job_id: str, current_user: dict = Depends(get_current_user)):
     """Return current status for a job (for polling)."""
     record = job_store.get_job(job_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    if record.get("user_id") != current_user["sub"]:
+        raise HTTPException(status_code=403, detail="Access denied.")
 
     return JobStatusResponse(
         job_id=record["job_id"],
@@ -75,7 +82,7 @@ async def get_job_status(job_id: str):
 
 
 @router.get("/jobs/{job_id}/result", response_model=JobResultResponse)
-async def get_job_result(job_id: str):
+async def get_job_result(job_id: str, current_user: dict = Depends(get_current_user)):
     """
     Return the full result for a completed job.
     Presigned S3 URLs are generated fresh on each call.
@@ -83,6 +90,8 @@ async def get_job_result(job_id: str):
     record = job_store.get_job(job_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    if record.get("user_id") != current_user["sub"]:
+        raise HTTPException(status_code=403, detail="Access denied.")
 
     status = record["status"]
 

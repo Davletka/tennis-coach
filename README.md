@@ -80,13 +80,24 @@ uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 
 Interactive API docs: `http://localhost:8000/docs`
 
+### Authentication
+
+All `/api/v1/*` routes require a `Authorization: Bearer <token>` header. Obtain a token via the OAuth flow:
+
+1. Redirect the user to `GET /auth/google`
+2. After consent, Google redirects to `/auth/callback`, which issues a JWT and redirects to `{FRONTEND_URL}/auth/callback?token=<jwt>`
+3. Include the token in subsequent API requests
+
 ### Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/v1/analyze` | Upload video → returns `job_id` (202 Accepted) |
-| `GET` | `/api/v1/jobs/{job_id}` | Poll status + progress (0–100%) |
-| `GET` | `/api/v1/jobs/{job_id}/result` | Fetch coaching report, metrics, and presigned video URLs |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/auth/google` | — | Start Google OAuth flow (302 redirect) |
+| `GET` | `/auth/callback` | — | OAuth callback → sign JWT → redirect to frontend |
+| `GET` | `/auth/me` | Required | Return authenticated user profile |
+| `POST` | `/api/v1/analyze` | Required | Upload video → returns `job_id` (202 Accepted) |
+| `GET` | `/api/v1/jobs/{job_id}` | Required | Poll status + progress (0–100%) |
+| `GET` | `/api/v1/jobs/{job_id}/result` | Required | Fetch coaching report, metrics, and presigned video URLs |
 
 ## Project Structure
 
@@ -106,11 +117,17 @@ tennis-coach/
 │   ├── main.py             # FastAPI app factory + CORS
 │   ├── settings.py         # Pydantic settings (env vars)
 │   ├── models.py           # Request/response Pydantic models
+│   ├── auth/
+│   │   ├── google.py       # Google OAuth URL builder + token exchange
+│   │   ├── jwt.py          # JWT sign + verify (python-jose HS256)
+│   │   └── dependencies.py # get_current_user FastAPI dependency
 │   ├── routes/
-│   │   └── analysis.py     # REST endpoints
+│   │   ├── analysis.py     # REST endpoints (auth-protected)
+│   │   └── auth.py         # /auth/google, /auth/callback, /auth/me
 │   ├── services/
 │   │   ├── storage.py      # S3 upload + presigned URLs
-│   │   └── job_store.py    # Redis job state
+│   │   ├── job_store.py    # Redis job state (user-scoped)
+│   │   └── user_store.py   # Redis user records (90-day TTL)
 │   └── tasks/
 │       └── analyze.py      # Celery task: full pipeline
 ├── pipeline/
