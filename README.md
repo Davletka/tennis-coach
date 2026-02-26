@@ -16,22 +16,52 @@ AI-powered tennis coach that analyzes uploaded tennis videos using pose detectio
 python -m venv .venv
 source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
-cp .env.example .env          # add your ANTHROPIC_API_KEY
-streamlit run app.py
+cp .env.example .env          # fill in all required env vars (see .env.example)
 ```
 
 ffmpeg is recommended for browser-compatible H.264 output (the app falls back to mp4v if unavailable).
 
 On first run the app downloads the MediaPipe pose landmarker model (~25 MB) into `models/` and caches it for subsequent runs.
 
-## Usage
+## Running the Streamlit UI
+
+```bash
+streamlit run app.py
+```
 
 1. Enter your Anthropic API key in the sidebar (or set `ANTHROPIC_API_KEY` in `.env`)
 2. Upload a tennis video (MP4, MOV, or AVI — ideally ≤10 seconds)
 3. Adjust display and analysis options in the sidebar
-4. Click **Analyze** and wait for the 5-step pipeline to complete
+4. Click **Analyze** and wait for the pipeline to complete
 5. View the annotated video and coaching tabs (Swing / Footwork / Stance / Tactics / Priorities)
 6. Download the annotated video with the download button
+
+## Running the REST API (FastAPI + Celery + Redis + S3)
+
+The API backend supports React web and React Native mobile clients.
+
+**Prerequisites:** Redis server, AWS S3 bucket, and all env vars set in `.env`.
+
+```bash
+# Terminal 1 — Redis
+redis-server
+
+# Terminal 2 — Celery worker (heavy video processing)
+celery -A celery_app worker --loglevel=info --concurrency=2
+
+# Terminal 3 — FastAPI server
+uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
+```
+
+Interactive API docs: `http://localhost:8000/docs`
+
+### Endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `POST` | `/api/v1/analyze` | Upload video → returns `job_id` (202 Accepted) |
+| `GET` | `/api/v1/jobs/{job_id}` | Poll status + progress (0–100%) |
+| `GET` | `/api/v1/jobs/{job_id}/result` | Fetch coaching report, metrics, and presigned video URLs |
 
 ## Project Structure
 
@@ -39,8 +69,20 @@ On first run the app downloads the MediaPipe pose landmarker model (~25 MB) into
 tennis-coach/
 ├── app.py                  # Streamlit UI + orchestration
 ├── config.py               # Landmark indices, thresholds, constants
+├── celery_app.py           # Celery instance (broker=Redis)
 ├── requirements.txt
 ├── .env.example
+├── api/
+│   ├── main.py             # FastAPI app factory + CORS
+│   ├── settings.py         # Pydantic settings (env vars)
+│   ├── models.py           # Request/response Pydantic models
+│   ├── routes/
+│   │   └── analysis.py     # REST endpoints
+│   ├── services/
+│   │   ├── storage.py      # S3 upload + presigned URLs
+│   │   └── job_store.py    # Redis job state
+│   └── tasks/
+│       └── analyze.py      # Celery task: full pipeline
 ├── pipeline/
 │   ├── video_io.py         # Frame extraction + H.264 reassembly
 │   ├── pose_detector.py    # MediaPipe wrapper
@@ -55,7 +97,10 @@ tennis-coach/
 
 | Component | Library |
 |-----------|---------|
-| UI | Streamlit |
+| Streamlit UI | Streamlit |
+| REST API | FastAPI + uvicorn |
+| Async jobs | Celery + Redis |
+| File storage | AWS S3 (boto3) |
 | Pose detection | MediaPipe |
 | Video processing | OpenCV (headless) |
 | AI coaching | Anthropic Claude (`claude-sonnet-4-6`) |

@@ -1,3 +1,4 @@
+# Streamlit UI (existing)
 streamlit>=1.35.0
 opencv-python-headless>=4.9.0.80
 mediapipe>=0.10.11
@@ -6,3 +7,16 @@ anthropic>=0.40.0
 python-dotenv>=1.0.0
 Pillow>=10.3.0
 pandas>=2.0.0
+
+# FastAPI backend
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+pydantic-settings>=2.2.0
+
+# Async job processing
+celery>=5.4.0
+redis>=5.0.0
+
+# AWS S3 storage
+boto3>=1.34.0
