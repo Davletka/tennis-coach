@@ -34,10 +34,14 @@ npm run dev
 
 Open http://localhost:3000. The frontend requires the FastAPI backend running (see below).
 
-1. Drag-and-drop or browse to select a tennis video (MP4, MOV, or AVI)
-2. Click **Analyze Video** — progress is shown while the job runs
-3. View the annotated video and coaching tabs (Swing / Footwork / Stance / Tactics / Priorities)
-4. Download the annotated video or expand **Raw Metrics** for joint angle stats
+1. Sign in with Google (top-right) — required for history tracking and comparisons
+2. Drag-and-drop or browse to select a tennis video (MP4, MOV, or AVI) on the **Analyze** tab
+3. Click **Analyze Video** — progress is shown while the job runs
+4. View the annotated video and coaching tabs (Swing / Footwork / Stance / Tactics / Priorities)
+5. Download the annotated video or expand **Raw Metrics** for joint angle stats
+6. Switch to **History** to browse all past sessions (expandable coaching + metrics per session)
+7. Switch to **Compare** to select two sessions and get AI-generated delta coaching with metric changes
+8. Switch to **Progress** to see SVG sparkline charts for each metric across up to 30 sessions
 
 ## Running with Docker
 

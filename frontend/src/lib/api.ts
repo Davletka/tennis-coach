@@ -72,7 +72,81 @@ export interface JobResultResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Fetch helpers
+// Auth types
+// ---------------------------------------------------------------------------
+
+export interface UserProfile {
+  user_id: string;
+  email: string;
+  name: string;
+  picture: string;
+}
+
+// ---------------------------------------------------------------------------
+// History types
+// ---------------------------------------------------------------------------
+
+export interface SessionSummary {
+  id: string;
+  job_id: string;
+  recorded_at: string;
+  original_filename: string;
+  fps: number;
+  total_source_frames: number;
+  frames_analyzed: number;
+  detection_rate: number;
+  metrics: MetricsResult;
+  coaching: CoachingReportResult;
+}
+
+export interface SessionListResponse {
+  sessions: SessionSummary[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ProgressDataPoint {
+  recorded_at: string;
+  right_elbow_mean: number | null;
+  left_elbow_mean: number | null;
+  right_shoulder_mean: number | null;
+  left_shoulder_mean: number | null;
+  right_knee_mean: number | null;
+  left_knee_mean: number | null;
+  torso_rotation_mean: number | null;
+  stance_width_mean: number | null;
+  swing_count: number | null;
+  detection_rate: number | null;
+}
+
+export interface ProgressResponse {
+  data_points: ProgressDataPoint[];
+}
+
+export interface MetricDelta {
+  metric_name: string;
+  session_a_value: number | null;
+  session_b_value: number | null;
+  delta: number | null;
+  direction: "improved" | "regressed" | "unchanged";
+}
+
+export interface DeltaCoachingReport {
+  overall_progress_summary: string;
+  improvements: string[];
+  regressions: string[];
+  unchanged_areas: string[];
+  top_3_priorities: string[];
+}
+
+export interface CompareResponse {
+  metric_deltas: MetricDelta[];
+  delta_coaching_report: DeltaCoachingReport;
+}
+
+// ---------------------------------------------------------------------------
+// Fetch helpers — unauthenticated
 // ---------------------------------------------------------------------------
 
 export async function uploadVideo(file: File): Promise<AnalyzeResponse> {
@@ -111,4 +185,65 @@ export async function getJobResult(
     throw new Error(`Result fetch failed (${res.status}): ${detail}`);
   }
   return res.json() as Promise<JobResultResponse>;
+}
+
+// ---------------------------------------------------------------------------
+// Fetch helpers — authenticated
+// ---------------------------------------------------------------------------
+
+function authHeaders(token: string): HeadersInit {
+  return { Authorization: `Bearer ${token}` };
+}
+
+export async function getMe(token: string): Promise<UserProfile> {
+  const res = await fetch(`${API_BASE}/auth/me`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error(`Auth check failed (${res.status})`);
+  return res.json() as Promise<UserProfile>;
+}
+
+export async function listSessions(
+  token: string,
+  userId: string,
+  limit = 10,
+  offset = 0
+): Promise<SessionListResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/users/${userId}/history?limit=${limit}&offset=${offset}`,
+    { headers: authHeaders(token) }
+  );
+  if (!res.ok) throw new Error(`History fetch failed (${res.status})`);
+  return res.json() as Promise<SessionListResponse>;
+}
+
+export async function getProgress(
+  token: string,
+  userId: string,
+  limit = 30
+): Promise<ProgressResponse> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/users/${userId}/progress?limit=${limit}`,
+    { headers: authHeaders(token) }
+  );
+  if (!res.ok) throw new Error(`Progress fetch failed (${res.status})`);
+  return res.json() as Promise<ProgressResponse>;
+}
+
+export async function compareSessions(
+  token: string,
+  userId: string,
+  sessionAId: string,
+  sessionBId: string
+): Promise<CompareResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/users/${userId}/compare`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ session_a_id: sessionAId, session_b_id: sessionBId }),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Compare failed (${res.status}): ${detail}`);
+  }
+  return res.json() as Promise<CompareResponse>;
 }
