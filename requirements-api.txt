@@ -1,0 +1,11 @@
+# Lightweight requirements for the FastAPI service.
+# MediaPipe and OpenCV are intentionally excluded — they run only in the Celery worker.
+
+fastapi>=0.111.0
+uvicorn[standard]>=0.29.0
+python-multipart>=0.0.9
+pydantic-settings>=2.2.0
+celery>=5.4.0
+redis>=5.0.0
+boto3>=1.34.0
+python-dotenv>=1.0.0

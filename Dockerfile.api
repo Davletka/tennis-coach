@@ -1,0 +1,26 @@
+# ---- FastAPI backend ----
+# Handles HTTP requests, S3 uploads, and Celery task dispatch on port 8000.
+# MediaPipe is intentionally NOT installed here — it lives only in the worker.
+
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install API-only Python dependencies
+COPY requirements-api.txt .
+RUN pip install --no-cache-dir -r requirements-api.txt
+
+# Copy only the files this service needs
+COPY celery_app.py ./
+COPY api/ ./api/
+
+# Run as non-root
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')"
+
+CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
