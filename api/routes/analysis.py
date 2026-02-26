@@ -37,6 +37,8 @@ async def create_analysis(
 ):
     """
     Accept an uploaded video, push it to S3, and enqueue a Celery analysis task.
+    The authenticated user's ID (from JWT) is passed to the task so the completed
+    session is persisted to Postgres for history/progress tracking.
     """
     import os
     ext = os.path.splitext(file.filename or "")[1].lower()
@@ -52,11 +54,11 @@ async def create_analysis(
     # Stream file directly to S3 — avoids holding the whole video in memory
     storage.upload_fileobj(file.file, s3_key)
 
-    # Create Redis job record
+    # Create Redis job record (user-scoped)
     user_id = current_user["sub"]
     job_store.create_job(job_id, user_id=user_id)
 
-    # Enqueue Celery task
+    # Enqueue Celery task; user_id always present (auth is mandatory)
     run_analysis.delay(job_id, s3_key, file.filename, user_id=user_id)
 
     return AnalyzeResponse(job_id=job_id, status="pending")

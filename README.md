@@ -64,13 +64,16 @@ docker build -f Dockerfile.worker   -t tennis-worker    .
 
 > **Note:** `Dockerfile.api` uses `requirements-api.txt` (no MediaPipe/OpenCV) for a leaner image. `Dockerfile.frontend` is a 3-stage build producing a standalone Next.js bundle.
 
-## Running the REST API (FastAPI + Celery + Redis + S3)
+## Running the REST API (FastAPI + Celery + Redis + S3 + Postgres)
 
 The API backend supports React web and React Native mobile clients.
 
-**Prerequisites:** Redis server, AWS S3 bucket, and all env vars set in `.env`.
+**Prerequisites:** Redis server, PostgreSQL database, AWS S3 bucket, and all env vars set in `.env`.
 
 ```bash
+# One-time: create the database schema
+psql -U postgres -d tennis_coach -f db_schema.sql
+
 # Terminal 1 — Redis
 redis-server
 
@@ -80,6 +83,8 @@ celery -A celery_app worker --loglevel=info --concurrency=2
 # Terminal 3 — FastAPI server
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
+
+Set `DATABASE_URL` in `.env` (default: `postgresql://postgres:postgres@localhost:5432/tennis_coach`).
 
 Interactive API docs: `http://localhost:8000/docs`
 
@@ -101,6 +106,11 @@ All `/api/v1/*` routes require a `Authorization: Bearer <token>` header. Obtain 
 | `POST` | `/api/v1/analyze` | Required | Upload video → returns `job_id` (202 Accepted) |
 | `GET` | `/api/v1/jobs/{job_id}` | Required | Poll status + progress (0–100%) |
 | `GET` | `/api/v1/jobs/{job_id}/result` | Required | Fetch coaching report, metrics, and presigned video URLs |
+| `GET` | `/api/v1/users/{user_id}/history` | Required | Paginated session list with presigned URLs |
+| `GET` | `/api/v1/users/{user_id}/progress` | Required | Time-series of scalar metrics for charting |
+| `POST` | `/api/v1/users/{user_id}/compare` | Required | Delta coaching between two sessions |
+
+Sessions are persisted to PostgreSQL on every completed analysis. Ephemeral job state expires from Redis after 24h.
 
 ## Project Structure
 
@@ -112,6 +122,7 @@ tennis-coach/
 │   └── next.config.mjs     # output: "standalone"
 ├── config.py               # Landmark indices, thresholds, constants
 ├── celery_app.py           # Celery instance (broker=Redis)
+├── db_schema.sql           # PostgreSQL schema (run once manually)
 ├── requirements.txt
 ├── requirements-api.txt    # Lean deps for the API service (no MediaPipe/OpenCV)
 ├── Dockerfile.frontend
@@ -120,28 +131,32 @@ tennis-coach/
 ├── docker-compose.yml
 ├── .env.example
 ├── api/
-│   ├── main.py             # FastAPI app factory + CORS
+│   ├── main.py             # FastAPI app factory + CORS + lifespan DB pool
 │   ├── settings.py         # Pydantic settings (env vars)
 │   ├── models.py           # Request/response Pydantic models
+│   ├── db.py               # asyncpg connection pool singleton
 │   ├── auth/
 │   │   ├── google.py       # Google OAuth URL builder + token exchange
 │   │   ├── jwt.py          # JWT sign + verify (python-jose HS256)
 │   │   └── dependencies.py # get_current_user FastAPI dependency
 │   ├── routes/
-│   │   ├── analysis.py     # REST endpoints (auth-protected)
-│   │   └── auth.py         # /auth/google, /auth/callback, /auth/me
+│   │   ├── analysis.py     # Job endpoints (analyze / status / result)
+│   │   ├── auth.py         # /auth/google, /auth/callback, /auth/me
+│   │   └── history.py      # History / progress / compare endpoints
 │   ├── services/
 │   │   ├── storage.py      # S3 upload + presigned URLs
 │   │   ├── job_store.py    # Redis job state (user-scoped)
-│   │   └── user_store.py   # Redis user records (90-day TTL)
+│   │   ├── user_store.py   # Redis user records (90-day TTL)
+│   │   └── history.py      # SQL service layer (players + sessions)
 │   └── tasks/
-│       └── analyze.py      # Celery task: full pipeline
+│       └── analyze.py      # Celery task: full pipeline + Postgres persist
 ├── pipeline/
 │   ├── video_io.py         # Frame extraction + H.264 reassembly
 │   ├── pose_detector.py    # MediaPipe wrapper
 │   ├── metrics.py          # Joint angles, swing detection, aggregation
 │   ├── annotator.py        # Skeleton overlay, angle labels, wrist trail
-│   └── coach.py            # Claude prompt builder + response parser
+│   ├── coach.py            # Claude prompt builder + response parser
+│   └── compare_coach.py    # Delta coaching between two sessions
 └── utils/
     └── math_helpers.py     # angle_between_three_points, find_peaks, etc.
 ```
@@ -158,3 +173,5 @@ tennis-coach/
 | Video processing | OpenCV (headless) |
 | AI coaching | Anthropic Claude (`claude-sonnet-4-6`) |
 | Math | NumPy |
+| Auth | Google OAuth + python-jose (JWT) |
+| Database | PostgreSQL (asyncpg / psycopg2) |

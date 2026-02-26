@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     aws_region: str = "us-east-1"
     s3_bucket_name: str = "tennis-coach-videos"
     redis_url: str = "redis://localhost:6379/0"
+    database_url: str = "postgresql://postgres:postgres@localhost:5432/tennis_coach"
 
     # Job TTL in seconds (24 hours)
     job_ttl: int = 86400
