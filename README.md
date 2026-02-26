@@ -22,6 +22,8 @@ streamlit run app.py
 
 ffmpeg is recommended for browser-compatible H.264 output (the app falls back to mp4v if unavailable).
 
+On first run the app downloads the MediaPipe pose landmarker model (~25 MB) into `models/` and caches it for subsequent runs.
+
 ## Usage
 
 1. Enter your Anthropic API key in the sidebar (or set `ANTHROPIC_API_KEY` in `.env`)
