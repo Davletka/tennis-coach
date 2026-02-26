@@ -9,9 +9,9 @@ class Settings(BaseSettings):
     r2_account_id: str
     r2_access_key_id: str
     r2_secret_access_key: str
-    r2_bucket_name: str = "tennis-coach-videos"
+    r2_bucket_name: str = "courtcoach-videos"
     redis_url: str = "redis://localhost:6379/0"
-    database_url: str = "postgresql://postgres:postgres@localhost:5432/tennis_coach"
+    database_url: str = "postgresql://postgres:postgres@localhost:5432/courtcoach"
 
     # Job TTL in seconds (24 hours)
     job_ttl: int = 86400

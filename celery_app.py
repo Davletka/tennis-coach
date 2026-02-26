@@ -8,7 +8,7 @@ from celery import Celery
 from api.settings import settings
 
 app = Celery(
-    "tennis_coach",
+    "courtcoach",
     broker=settings.redis_url,
     backend=None,  # We manage job state in Redis directly via job_store
     include=["api.tasks.analyze"],

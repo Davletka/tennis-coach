@@ -6,7 +6,7 @@
 # ── Default ──────────────────────────────────────────────────────────────────
 help:
 	@echo ""
-	@echo "Tennis Coach — available targets"
+	@echo "CourtCoach — available targets"
 	@echo ""
 	@echo "  Setup"
 	@echo "    install            Install full Python deps (pipeline + API + worker)"
@@ -83,7 +83,7 @@ docker-logs:
 	docker compose logs -f
 
 # ── Database ─────────────────────────────────────────────────────────────────
-DB_URL ?= postgresql://postgres:postgres@localhost:5432/tennis_coach
+DB_URL ?= postgresql://postgres:postgres@localhost:5432/courtcoach
 
 db-init:
 	psql "$(DB_URL)" -f db_schema.sql

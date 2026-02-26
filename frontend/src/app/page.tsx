@@ -207,7 +207,7 @@ function NavBar({
       <div className="mb-5 flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-white">
-            AI Tennis Coach
+            CourtCoach
           </h1>
           <p className="text-xs text-gray-500">
             Pose analysis &amp; coaching feedback
@@ -1405,7 +1405,7 @@ function LandingPage({ onSignIn }: { onSignIn: () => void }) {
 
         <div>
           <h2 className="text-3xl font-bold tracking-tight text-white">
-            Your AI Tennis Coach
+            CourtCoach
           </h2>
           <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-gray-400">
             Upload a video of your swing and get instant pose analysis,
