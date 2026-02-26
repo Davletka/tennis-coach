@@ -68,10 +68,12 @@ function reducer(state: AppState, action: AppAction): AppState {
 // Upload + polling orchestration hook
 // ---------------------------------------------------------------------------
 
-function useTennisCoach() {
+function useTennisCoach(token: string | null) {
   const [state, dispatch] = useReducer(reducer, { phase: "idle" });
   const [file, setFile] = useState<File | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tokenRef = useRef(token);
+  useEffect(() => { tokenRef.current = token; }, [token]);
 
   const stopPolling = useCallback(() => {
     if (pollTimerRef.current !== null) {
@@ -84,9 +86,10 @@ function useTennisCoach() {
     (jobId: string) => {
       pollTimerRef.current = setTimeout(async () => {
         try {
-          const status = await getJobStatus(jobId);
+          const tok = tokenRef.current!;
+          const status = await getJobStatus(jobId, tok);
           if (status.status === "completed") {
-            const result = await getJobResult(jobId);
+            const result = await getJobResult(jobId, tok);
             dispatch({ type: "COMPLETE", result });
           } else if (status.status === "failed") {
             dispatch({ type: "FAIL", error: "Analysis failed on the server." });
@@ -109,9 +112,13 @@ function useTennisCoach() {
 
   const analyze = useCallback(
     async (f: File) => {
+      if (!tokenRef.current) {
+        dispatch({ type: "FAIL", error: "Please sign in to analyze a video." });
+        return;
+      }
       dispatch({ type: "UPLOAD_START" });
       try {
-        const { job_id } = await uploadVideo(f);
+        const { job_id } = await uploadVideo(f, tokenRef.current);
         dispatch({ type: "UPLOAD_DONE", jobId: job_id });
         scheduleNextPoll(job_id);
       } catch (err) {
@@ -1362,8 +1369,8 @@ function ProgressTab({
 // ---------------------------------------------------------------------------
 
 export default function Home() {
-  const { state, file, setFile, analyze, reset } = useTennisCoach();
   const { token, user, loading: authLoading, signIn, signOut } = useAuth();
+  const { state, file, setFile, analyze, reset } = useTennisCoach(token);
   const [activeTab, setActiveTab] = useState<Tab>("analyze");
 
   const handleFile = useCallback((f: File) => setFile(f), [setFile]);

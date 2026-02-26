@@ -7,13 +7,7 @@ not loaded in the FastAPI/API process — only in the Celery worker.
 from __future__ import annotations
 
 import os
-import sys
 import tempfile
-
-# Ensure the project root is on sys.path so pipeline imports work
-_PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-if _PROJECT_ROOT not in sys.path:
-    sys.path.insert(0, _PROJECT_ROOT)
 
 from celery_app import app
 from api.services import job_store, storage
