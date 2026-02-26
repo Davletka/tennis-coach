@@ -1,5 +1,5 @@
 """
-Pydantic request/response models for the Tennis Coach API.
+Pydantic request/response models for the CourtCoach API.
 """
 from __future__ import annotations
 

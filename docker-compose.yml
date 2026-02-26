@@ -11,14 +11,14 @@ services:
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: tennis_coach
+      POSTGRES_DB: courtcoach
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./db_schema.sql:/docker-entrypoint-initdb.d/01_schema.sql
     ports:
       - "5432:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d tennis_coach"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d courtcoach"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -50,7 +50,7 @@ services:
     env_file: .env
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/tennis_coach
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/courtcoach
     depends_on:
       redis:
         condition: service_healthy
@@ -75,7 +75,7 @@ services:
     env_file: .env
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/tennis_coach
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/courtcoach
     depends_on:
       redis:
         condition: service_healthy

@@ -1,6 +1,6 @@
-# Tennis Coach
+# CourtCoach
 
-AI-powered tennis coach that analyzes uploaded tennis videos using pose detection, produces an annotated video with skeleton overlay and joint angle labels, and delivers written coaching feedback via Claude.
+AI-powered tennis coaching app that analyzes uploaded tennis videos using pose detection, produces an annotated video with skeleton overlay and joint angle labels, and delivers written coaching feedback via Claude.
 
 ## Features
 
@@ -103,9 +103,9 @@ docker compose up --build
 Individual images:
 
 ```bash
-docker build -f Dockerfile.frontend -t tennis-frontend .
-docker build -f Dockerfile.api      -t tennis-api       .
-docker build -f Dockerfile.worker   -t tennis-worker    .
+docker build -f Dockerfile.frontend -t courtcoach-frontend .
+docker build -f Dockerfile.api      -t courtcoach-api       .
+docker build -f Dockerfile.worker   -t courtcoach-worker    .
 ```
 
 > **Note:** `Dockerfile.api` uses `requirements-api.txt` (no MediaPipe/OpenCV) for a leaner image. `Dockerfile.frontend` is a 3-stage build producing a standalone Next.js bundle.
@@ -118,7 +118,7 @@ The API backend supports React web and React Native mobile clients.
 
 ```bash
 # One-time: create the database schema
-psql -U postgres -d tennis_coach -f db_schema.sql
+psql -U postgres -d courtcoach -f db_schema.sql
 
 # Terminal 1 — Redis
 redis-server
@@ -130,7 +130,7 @@ celery -A celery_app worker --loglevel=info --concurrency=2
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
-Set `DATABASE_URL` in `.env` (default: `postgresql://postgres:postgres@localhost:5432/tennis_coach`).
+Set `DATABASE_URL` in `.env` (default: `postgresql://postgres:postgres@localhost:5432/courtcoach`).
 
 Interactive API docs: `http://localhost:8000/docs`
 

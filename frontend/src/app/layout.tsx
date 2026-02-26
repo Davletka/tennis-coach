@@ -2,8 +2,8 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "AI Tennis Coach",
-  description: "Upload a tennis video for AI-powered coaching feedback",
+  title: "CourtCoach",
+  description: "AI-powered tennis coaching — pose analysis and personalised feedback",
 };
 
 export default function RootLayout({

@@ -1,6 +1,6 @@
--- Tennis Coach — PostgreSQL schema
+-- CourtCoach — PostgreSQL schema
 -- Run once against your Postgres database:
---   psql -U postgres -d tennis_coach -f db_schema.sql
+--   psql -U postgres -d courtcoach -f db_schema.sql
 
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 

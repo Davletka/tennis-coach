@@ -24,7 +24,7 @@ async def lifespan(app: FastAPI):
 
 def create_app() -> FastAPI:
     application = FastAPI(
-        title="Tennis Coach API",
+        title="CourtCoach API",
         description="AI-powered tennis video analysis backend.",
         version="1.0.0",
         lifespan=lifespan,
