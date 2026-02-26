@@ -1,5 +1,5 @@
 """
-Constants, landmark indices, and configuration for the tennis coach pipeline.
+Constants, landmark indices, and configuration for the CourtCoach pipeline.
 """
 
 # MediaPipe Pose landmark indices
