@@ -208,3 +208,6 @@ __marimo__/
 
 # MediaPipe downloaded model files
 models/
+
+# Allow frontend source directories that would otherwise be caught by Python patterns above
+!frontend/src/lib/

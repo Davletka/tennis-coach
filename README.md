@@ -23,18 +23,21 @@ ffmpeg is recommended for browser-compatible H.264 output (the app falls back to
 
 On first run the app downloads the MediaPipe pose landmarker model (~25 MB) into `models/` and caches it for subsequent runs.
 
-## Running the Streamlit UI
+## Running the Next.js frontend (local dev)
 
 ```bash
-streamlit run app.py
+cd frontend
+cp .env.local.example .env.local   # set NEXT_PUBLIC_API_URL if needed
+npm install
+npm run dev
 ```
 
-1. Enter your Anthropic API key in the sidebar (or set `ANTHROPIC_API_KEY` in `.env`)
-2. Upload a tennis video (MP4, MOV, or AVI — ideally ≤10 seconds)
-3. Adjust display and analysis options in the sidebar
-4. Click **Analyze** and wait for the pipeline to complete
-5. View the annotated video and coaching tabs (Swing / Footwork / Stance / Tactics / Priorities)
-6. Download the annotated video with the download button
+Open http://localhost:3000. The frontend requires the FastAPI backend running (see below).
+
+1. Drag-and-drop or browse to select a tennis video (MP4, MOV, or AVI)
+2. Click **Analyze Video** — progress is shown while the job runs
+3. View the annotated video and coaching tabs (Swing / Footwork / Stance / Tactics / Priorities)
+4. Download the annotated video or expand **Raw Metrics** for joint angle stats
 
 ## Running with Docker
 
@@ -47,19 +50,19 @@ docker compose up --build
 
 | Service | URL |
 |---------|-----|
-| Streamlit UI | http://localhost:8501 |
+| Next.js frontend | http://localhost:3000 |
 | FastAPI docs | http://localhost:8000/docs |
 | Redis | localhost:6379 |
 
 Individual images:
 
 ```bash
-docker build -f Dockerfile.streamlit -t tennis-streamlit .
+docker build -f Dockerfile.frontend -t tennis-frontend .
 docker build -f Dockerfile.api      -t tennis-api       .
 docker build -f Dockerfile.worker   -t tennis-worker    .
 ```
 
-> **Note:** `Dockerfile.api` uses `requirements-api.txt` (no MediaPipe/OpenCV) for a leaner image. `Dockerfile.streamlit` and `Dockerfile.worker` use the full `requirements.txt`.
+> **Note:** `Dockerfile.api` uses `requirements-api.txt` (no MediaPipe/OpenCV) for a leaner image. `Dockerfile.frontend` is a 3-stage build producing a standalone Next.js bundle.
 
 ## Running the REST API (FastAPI + Celery + Redis + S3)
 
@@ -92,12 +95,15 @@ Interactive API docs: `http://localhost:8000/docs`
 
 ```
 tennis-coach/
-├── app.py                  # Streamlit UI + orchestration
+├── frontend/               # Next.js 14 React frontend
+│   ├── src/app/page.tsx    # Entire app: state machine + all components
+│   ├── src/lib/api.ts      # TypeScript fetch helpers + API types
+│   └── next.config.mjs     # output: "standalone"
 ├── config.py               # Landmark indices, thresholds, constants
 ├── celery_app.py           # Celery instance (broker=Redis)
 ├── requirements.txt
 ├── requirements-api.txt    # Lean deps for the API service (no MediaPipe/OpenCV)
-├── Dockerfile.streamlit
+├── Dockerfile.frontend
 ├── Dockerfile.api
 ├── Dockerfile.worker
 ├── docker-compose.yml
@@ -127,7 +133,7 @@ tennis-coach/
 
 | Component | Library |
 |-----------|---------|
-| Streamlit UI | Streamlit |
+| Frontend | Next.js 14 + TypeScript + Tailwind CSS |
 | REST API | FastAPI + uvicorn |
 | Async jobs | Celery + Redis |
 | File storage | AWS S3 (boto3) |

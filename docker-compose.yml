@@ -62,15 +62,20 @@ services:
     #       memory: 4g
 
   # --------------------------------------------------------------------------
-  # Streamlit UI — interactive upload + analysis frontend
+  # Next.js frontend — React UI that talks to the FastAPI backend
   # --------------------------------------------------------------------------
-  streamlit:
+  frontend:
     build:
       context: .
-      dockerfile: Dockerfile.streamlit
+      dockerfile: Dockerfile.frontend
+      args:
+        # Browser-side variable — must be reachable from the user's browser.
+        # In a standard docker compose setup the browser hits the host port,
+        # so localhost:8000 is correct (the api service is mapped to host 8000).
+        NEXT_PUBLIC_API_URL: http://localhost:8000
     restart: unless-stopped
     ports:
-      - "8501:8501"
-    env_file: .env
-    # Streamlit operates standalone and talks to the Claude API directly,
-    # so it does not depend on the api or worker services.
+      - "3000:3000"
+    depends_on:
+      api:
+        condition: service_healthy

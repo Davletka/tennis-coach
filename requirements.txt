@@ -1,12 +1,9 @@
-# Streamlit UI (existing)
-streamlit>=1.35.0
+# Pose detection + video processing pipeline
 opencv-python-headless>=4.9.0.80
 mediapipe>=0.10.11
 numpy>=1.26.0
 anthropic>=0.40.0
 python-dotenv>=1.0.0
-Pillow>=10.3.0
-pandas>=2.0.0
 
 # FastAPI backend
 fastapi>=0.111.0
