@@ -1,0 +1,76 @@
+version: "3.9"
+
+services:
+
+  # --------------------------------------------------------------------------
+  # Redis — Celery broker + job state store
+  # --------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # --------------------------------------------------------------------------
+  # FastAPI backend — video upload, job dispatch, status/result endpoints
+  # --------------------------------------------------------------------------
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    restart: unless-stopped
+    ports:
+      - "8000:8000"
+    env_file: .env
+    environment:
+      # Override the Redis URL so it points at the compose service, not localhost
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c",
+             "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')"]
+      interval: 30s
+      timeout: 10s
+      start_period: 15s
+      retries: 3
+
+  # --------------------------------------------------------------------------
+  # Celery worker — heavy analysis pipeline (MediaPipe + OpenCV + Claude)
+  # --------------------------------------------------------------------------
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    # Workers handling large videos can be memory-hungry; tune as needed.
+    # deploy:
+    #   resources:
+    #     limits:
+    #       memory: 4g
+
+  # --------------------------------------------------------------------------
+  # Streamlit UI — interactive upload + analysis frontend
+  # --------------------------------------------------------------------------
+  streamlit:
+    build:
+      context: .
+      dockerfile: Dockerfile.streamlit
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    env_file: .env
+    # Streamlit operates standalone and talks to the Claude API directly,
+    # so it does not depend on the api or worker services.

@@ -36,6 +36,31 @@ streamlit run app.py
 5. View the annotated video and coaching tabs (Swing / Footwork / Stance / Tactics / Priorities)
 6. Download the annotated video with the download button
 
+## Running with Docker
+
+The project ships with separate Dockerfiles for each service and a `docker-compose.yml` that orchestrates everything.
+
+```bash
+cp .env.example .env   # fill in ANTHROPIC_API_KEY, AWS credentials, etc.
+docker compose up --build
+```
+
+| Service | URL |
+|---------|-----|
+| Streamlit UI | http://localhost:8501 |
+| FastAPI docs | http://localhost:8000/docs |
+| Redis | localhost:6379 |
+
+Individual images:
+
+```bash
+docker build -f Dockerfile.streamlit -t tennis-streamlit .
+docker build -f Dockerfile.api      -t tennis-api       .
+docker build -f Dockerfile.worker   -t tennis-worker    .
+```
+
+> **Note:** `Dockerfile.api` uses `requirements-api.txt` (no MediaPipe/OpenCV) for a leaner image. `Dockerfile.streamlit` and `Dockerfile.worker` use the full `requirements.txt`.
+
 ## Running the REST API (FastAPI + Celery + Redis + S3)
 
 The API backend supports React web and React Native mobile clients.
@@ -71,6 +96,11 @@ tennis-coach/
 ├── config.py               # Landmark indices, thresholds, constants
 ├── celery_app.py           # Celery instance (broker=Redis)
 ├── requirements.txt
+├── requirements-api.txt    # Lean deps for the API service (no MediaPipe/OpenCV)
+├── Dockerfile.streamlit
+├── Dockerfile.api
+├── Dockerfile.worker
+├── docker-compose.yml
 ├── .env.example
 ├── api/
 │   ├── main.py             # FastAPI app factory + CORS

@@ -1,0 +1,35 @@
+# ---- Celery worker ----
+# Runs the heavy analysis pipeline (MediaPipe + OpenCV + Claude).
+# System libs are required because MediaPipe and OpenCV load native extensions.
+
+FROM python:3.11-slim
+
+# System libs required by OpenCV, MediaPipe, and ffmpeg
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ffmpeg \
+        libgl1 \
+        libglib2.0-0 \
+        libsm6 \
+        libxrender1 \
+        libxext6 \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Install all Python dependencies (includes mediapipe, opencv, anthropic, etc.)
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy everything the pipeline needs
+COPY config.py celery_app.py ./
+COPY api/ ./api/
+COPY pipeline/ ./pipeline/
+COPY utils/ ./utils/
+
+# Run as non-root
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+CMD ["celery", "-A", "celery_app", "worker", \
+     "--loglevel=info", \
+     "--concurrency=2"]
