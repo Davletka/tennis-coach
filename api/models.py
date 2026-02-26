@@ -81,6 +81,20 @@ class CoachingReportResult(BaseModel):
     top_3_priorities: List[str] = []
 
 
+class UserResponse(BaseModel):
+    user_id: str
+    email: str
+    name: str
+    picture: str
+    created_at: datetime
+    last_login: datetime
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+
+
 class JobResultResponse(BaseModel):
     job_id: str
     status: JobStatus
