@@ -20,7 +20,13 @@ from api.services import job_store, storage
 
 
 @app.task(bind=True, max_retries=0, name="api.tasks.analyze.run_analysis")
-def run_analysis(self, job_id: str, input_s3_key: str, original_filename: str) -> None:
+def run_analysis(
+    self,
+    job_id: str,
+    input_s3_key: str,
+    original_filename: str,
+    user_id: str | None = None,
+) -> None:
     """
     Full analysis pipeline as a Celery task.
 
@@ -185,6 +191,55 @@ def run_analysis(self, job_id: str, input_s3_key: str, original_filename: str) -
                 metrics=metrics_dict,
                 coaching_report=coaching_dict,
             )
+
+            # ----------------------------------------------------------------
+            # 11. Persist session to Postgres (only when user_id is provided)
+            # Celery worker has no async event loop, so use psycopg2 (sync).
+            # ----------------------------------------------------------------
+            if user_id is not None:
+                import json as _json
+                import psycopg2
+
+                with psycopg2.connect(settings.database_url) as conn:
+                    with conn.cursor() as cur:
+                        cur.execute(
+                            """
+                            INSERT INTO players (user_id)
+                            VALUES (%s::uuid)
+                            ON CONFLICT (user_id) DO UPDATE
+                                SET updated_at = NOW()
+                            """,
+                            (user_id,),
+                        )
+                        cur.execute(
+                            """
+                            INSERT INTO analysis_sessions (
+                                user_id, job_id, original_filename,
+                                fps, total_source_frames, frames_analyzed, detection_rate,
+                                input_s3_key, annotated_s3_key, metrics, coaching
+                            )
+                            VALUES (
+                                %s::uuid, %s, %s,
+                                %s, %s, %s, %s,
+                                %s, %s, %s::jsonb, %s::jsonb
+                            )
+                            ON CONFLICT (job_id) DO NOTHING
+                            """,
+                            (
+                                user_id,
+                                job_id,
+                                original_filename,
+                                fps,
+                                total_source_frames,
+                                metrics_dict.get("frames_analyzed", 0),
+                                metrics_dict.get("detection_rate", 0.0),
+                                input_s3_key,
+                                annotated_s3_key,
+                                _json.dumps(metrics_dict),
+                                _json.dumps(coaching_dict),
+                            ),
+                        )
+                    conn.commit()
 
     except Exception as exc:
         job_store.update_job(

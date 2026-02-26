@@ -36,13 +36,16 @@ streamlit run app.py
 5. View the annotated video and coaching tabs (Swing / Footwork / Stance / Tactics / Priorities)
 6. Download the annotated video with the download button
 
-## Running the REST API (FastAPI + Celery + Redis + S3)
+## Running the REST API (FastAPI + Celery + Redis + S3 + Postgres)
 
 The API backend supports React web and React Native mobile clients.
 
-**Prerequisites:** Redis server, AWS S3 bucket, and all env vars set in `.env`.
+**Prerequisites:** Redis server, PostgreSQL database, AWS S3 bucket, and all env vars set in `.env`.
 
 ```bash
+# One-time: create the database schema
+psql -U postgres -d tennis_coach -f db_schema.sql
+
 # Terminal 1 — Redis
 redis-server
 
@@ -53,15 +56,22 @@ celery -A celery_app worker --loglevel=info --concurrency=2
 uvicorn api.main:app --host 0.0.0.0 --port 8000 --reload
 ```
 
+Set `DATABASE_URL` in `.env` (default: `postgresql://postgres:postgres@localhost:5432/tennis_coach`).
+
 Interactive API docs: `http://localhost:8000/docs`
 
 ### Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
-| `POST` | `/api/v1/analyze` | Upload video → returns `job_id` (202 Accepted) |
+| `POST` | `/api/v1/analyze` | Upload video + optional `user_id` → returns `job_id` (202 Accepted) |
 | `GET` | `/api/v1/jobs/{job_id}` | Poll status + progress (0–100%) |
 | `GET` | `/api/v1/jobs/{job_id}/result` | Fetch coaching report, metrics, and presigned video URLs |
+| `GET` | `/api/v1/users/{user_id}/history` | Paginated session list with presigned URLs |
+| `GET` | `/api/v1/users/{user_id}/progress` | Time-series of scalar metrics for charting |
+| `POST` | `/api/v1/users/{user_id}/compare` | Delta coaching between two sessions |
+
+Pass `user_id` (UUID) as a form field to `POST /analyze` to associate the analysis with a player. Sessions are stored in PostgreSQL; ephemeral jobs expire from Redis after 24h regardless.
 
 ## Project Structure
 
@@ -70,25 +80,30 @@ tennis-coach/
 ├── app.py                  # Streamlit UI + orchestration
 ├── config.py               # Landmark indices, thresholds, constants
 ├── celery_app.py           # Celery instance (broker=Redis)
+├── db_schema.sql           # PostgreSQL schema (run once manually)
 ├── requirements.txt
 ├── .env.example
 ├── api/
-│   ├── main.py             # FastAPI app factory + CORS
+│   ├── main.py             # FastAPI app factory + CORS + lifespan DB pool
 │   ├── settings.py         # Pydantic settings (env vars)
 │   ├── models.py           # Request/response Pydantic models
+│   ├── db.py               # asyncpg connection pool singleton
 │   ├── routes/
-│   │   └── analysis.py     # REST endpoints
+│   │   ├── analysis.py     # Job endpoints (analyze / status / result)
+│   │   └── history.py      # History / progress / compare endpoints
 │   ├── services/
 │   │   ├── storage.py      # S3 upload + presigned URLs
-│   │   └── job_store.py    # Redis job state
+│   │   ├── job_store.py    # Redis job state
+│   │   └── history.py      # SQL service layer (players + sessions)
 │   └── tasks/
-│       └── analyze.py      # Celery task: full pipeline
+│       └── analyze.py      # Celery task: full pipeline + Postgres persist
 ├── pipeline/
 │   ├── video_io.py         # Frame extraction + H.264 reassembly
 │   ├── pose_detector.py    # MediaPipe wrapper
 │   ├── metrics.py          # Joint angles, swing detection, aggregation
 │   ├── annotator.py        # Skeleton overlay, angle labels, wrist trail
-│   └── coach.py            # Claude prompt builder + response parser
+│   ├── coach.py            # Claude prompt builder + response parser
+│   └── compare_coach.py    # Delta coaching between two sessions
 └── utils/
     └── math_helpers.py     # angle_between_three_points, find_peaks, etc.
 ```
@@ -105,3 +120,4 @@ tennis-coach/
 | Video processing | OpenCV (headless) |
 | AI coaching | Anthropic Claude (`claude-sonnet-4-6`) |
 | Math | NumPy |
+| Database | PostgreSQL (asyncpg / psycopg2) |

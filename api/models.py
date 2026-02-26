@@ -90,3 +90,81 @@ class JobResultResponse(BaseModel):
     input_video_url: str
     fps: float
     total_source_frames: int
+
+
+# ---------------------------------------------------------------------------
+# History / Progress / Compare models
+# ---------------------------------------------------------------------------
+
+class SessionSummary(BaseModel):
+    """One row returned by GET /users/{user_id}/history."""
+    session_id: str
+    job_id: str
+    recorded_at: datetime
+    original_filename: Optional[str]
+    fps: float
+    total_source_frames: int
+    frames_analyzed: int
+    detection_rate: float
+    annotated_video_url: str
+    input_video_url: str
+    metrics: dict
+    coaching: dict
+
+
+class SessionListResponse(BaseModel):
+    sessions: List[SessionSummary]
+    total: int
+    limit: int
+    offset: int
+
+
+class ProgressDataPoint(BaseModel):
+    """One time-series data point for GET /users/{user_id}/progress."""
+    session_id: str
+    recorded_at: datetime
+    right_elbow_mean: Optional[float] = None
+    left_elbow_mean: Optional[float] = None
+    right_shoulder_mean: Optional[float] = None
+    left_shoulder_mean: Optional[float] = None
+    right_knee_mean: Optional[float] = None
+    left_knee_mean: Optional[float] = None
+    torso_rotation_mean: Optional[float] = None
+    stance_width_mean: Optional[float] = None
+    com_x_range: Optional[float] = None
+    swing_count: Optional[int] = None
+    detection_rate: float
+
+
+class ProgressResponse(BaseModel):
+    data_points: List[ProgressDataPoint]
+    total: int
+
+
+class CompareRequest(BaseModel):
+    session_a_id: str
+    session_b_id: str
+
+
+class MetricDelta(BaseModel):
+    metric_name: str
+    session_a_value: Optional[float]
+    session_b_value: Optional[float]
+    delta: Optional[float]        # B minus A
+    direction: str                # "improved", "regressed", "unchanged"
+
+
+class DeltaCoachingReport(BaseModel):
+    overall_progress_summary: str = ""
+    improvements: List[str] = []
+    regressions: List[str] = []
+    unchanged_areas: List[str] = []
+    top_3_priorities: List[str] = []
+    raw_response: str = ""
+
+
+class CompareResponse(BaseModel):
+    session_a_id: str
+    session_b_id: str
+    metric_deltas: List[MetricDelta]
+    delta_coaching: DeltaCoachingReport

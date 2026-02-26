@@ -8,8 +8,9 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
+from typing import Optional
 
-from fastapi import APIRouter, HTTPException, UploadFile, File
+from fastapi import APIRouter, Form, HTTPException, UploadFile, File
 from fastapi.responses import JSONResponse
 
 from api.models import (
@@ -30,9 +31,15 @@ _ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
 
 
 @router.post("/analyze", response_model=AnalyzeResponse, status_code=202)
-async def create_analysis(file: UploadFile = File(...)):
+async def create_analysis(
+    file: UploadFile = File(...),
+    user_id: Optional[str] = Form(None),
+):
     """
     Accept an uploaded video, push it to S3, and enqueue a Celery analysis task.
+
+    *user_id* is an optional UUID string; when provided the completed session
+    will be persisted to Postgres for history/progress tracking.
     """
     import os
     ext = os.path.splitext(file.filename or "")[1].lower()
@@ -41,6 +48,16 @@ async def create_analysis(file: UploadFile = File(...)):
             status_code=415,
             detail=f"Unsupported file type '{ext}'. Allowed: {sorted(_ALLOWED_EXTENSIONS)}",
         )
+
+    # Validate user_id as UUID if provided
+    if user_id is not None:
+        try:
+            uuid.UUID(user_id)
+        except ValueError:
+            raise HTTPException(
+                status_code=422,
+                detail=f"user_id '{user_id}' is not a valid UUID.",
+            )
 
     job_id = str(uuid.uuid4())
     s3_key = f"uploads/{job_id}/{file.filename}"
@@ -51,8 +68,8 @@ async def create_analysis(file: UploadFile = File(...)):
     # Create Redis job record
     job_store.create_job(job_id)
 
-    # Enqueue Celery task
-    run_analysis.delay(job_id, s3_key, file.filename)
+    # Enqueue Celery task (user_id may be None — task handles both cases)
+    run_analysis.delay(job_id, s3_key, file.filename, user_id=user_id)
 
     return AnalyzeResponse(job_id=job_id, status="pending")
 
