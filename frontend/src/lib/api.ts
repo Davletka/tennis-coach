@@ -149,12 +149,13 @@ export interface CompareResponse {
 // Fetch helpers — unauthenticated
 // ---------------------------------------------------------------------------
 
-export async function uploadVideo(file: File): Promise<AnalyzeResponse> {
+export async function uploadVideo(file: File, token: string): Promise<AnalyzeResponse> {
   const form = new FormData();
   form.append("file", file);
 
   const res = await fetch(`${API_BASE}/api/v1/analyze`, {
     method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
     body: form,
   });
 
@@ -167,9 +168,12 @@ export async function uploadVideo(file: File): Promise<AnalyzeResponse> {
 }
 
 export async function getJobStatus(
-  jobId: string
+  jobId: string,
+  token: string,
 ): Promise<JobStatusResponse> {
-  const res = await fetch(`${API_BASE}/api/v1/jobs/${jobId}`);
+  const res = await fetch(`${API_BASE}/api/v1/jobs/${jobId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!res.ok) {
     throw new Error(`Status check failed (${res.status})`);
   }
@@ -177,9 +181,12 @@ export async function getJobStatus(
 }
 
 export async function getJobResult(
-  jobId: string
+  jobId: string,
+  token: string,
 ): Promise<JobResultResponse> {
-  const res = await fetch(`${API_BASE}/api/v1/jobs/${jobId}/result`);
+  const res = await fetch(`${API_BASE}/api/v1/jobs/${jobId}/result`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
   if (!res.ok) {
     const detail = await res.text();
     throw new Error(`Result fetch failed (${res.status}): ${detail}`);
