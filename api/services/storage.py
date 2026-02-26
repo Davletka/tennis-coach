@@ -1,5 +1,7 @@
 """
-S3 storage service — upload files and generate presigned URLs.
+Cloudflare R2 storage service — upload files and generate presigned URLs.
+
+R2 is S3-compatible; boto3 is used with a custom endpoint URL.
 """
 from __future__ import annotations
 
@@ -9,35 +11,36 @@ from botocore.client import Config
 from api.settings import settings
 
 
-def _s3_client():
+def _r2_client():
+    endpoint = f"https://{settings.r2_account_id}.r2.cloudflarestorage.com"
     return boto3.client(
         "s3",
-        region_name=settings.aws_region,
-        aws_access_key_id=settings.aws_access_key_id,
-        aws_secret_access_key=settings.aws_secret_access_key,
+        endpoint_url=endpoint,
+        aws_access_key_id=settings.r2_access_key_id,
+        aws_secret_access_key=settings.r2_secret_access_key,
         config=Config(signature_version="s3v4"),
     )
 
 
 def upload_fileobj(file_obj, s3_key: str) -> str:
     """
-    Stream *file_obj* directly to S3 at *s3_key*.
+    Stream *file_obj* directly to R2 at *s3_key*.
 
-    Returns the S3 key on success.
+    Returns the key on success.
     """
-    client = _s3_client()
-    client.upload_fileobj(file_obj, settings.s3_bucket_name, s3_key)
+    client = _r2_client()
+    client.upload_fileobj(file_obj, settings.r2_bucket_name, s3_key)
     return s3_key
 
 
 def upload_file(local_path: str, s3_key: str) -> str:
     """
-    Upload a local file at *local_path* to S3 at *s3_key*.
+    Upload a local file at *local_path* to R2 at *s3_key*.
 
-    Returns the S3 key on success.
+    Returns the key on success.
     """
-    client = _s3_client()
-    client.upload_file(local_path, settings.s3_bucket_name, s3_key)
+    client = _r2_client()
+    client.upload_file(local_path, settings.r2_bucket_name, s3_key)
     return s3_key
 
 
@@ -48,9 +51,9 @@ def presigned_url(s3_key: str, expiry: int | None = None) -> str:
     *expiry* defaults to settings.presigned_url_expiry (1 hour).
     """
     expiry = expiry if expiry is not None else settings.presigned_url_expiry
-    client = _s3_client()
+    client = _r2_client()
     return client.generate_presigned_url(
         "get_object",
-        Params={"Bucket": settings.s3_bucket_name, "Key": s3_key},
+        Params={"Bucket": settings.r2_bucket_name, "Key": s3_key},
         ExpiresIn=expiry,
     )

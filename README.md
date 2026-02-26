@@ -90,7 +90,7 @@ No external services (Redis, S3, Postgres) are required to run the test suite.
 The project ships with separate Dockerfiles for each service and a `docker-compose.yml` that orchestrates everything.
 
 ```bash
-cp .env.example .env   # fill in ANTHROPIC_API_KEY, AWS credentials, etc.
+cp .env.example .env   # fill in ANTHROPIC_API_KEY, Cloudflare R2 credentials, etc.
 docker compose up --build
 ```
 
@@ -110,11 +110,11 @@ docker build -f Dockerfile.worker   -t tennis-worker    .
 
 > **Note:** `Dockerfile.api` uses `requirements-api.txt` (no MediaPipe/OpenCV) for a leaner image. `Dockerfile.frontend` is a 3-stage build producing a standalone Next.js bundle.
 
-## Running the REST API (FastAPI + Celery + Redis + S3 + Postgres)
+## Running the REST API (FastAPI + Celery + Redis + R2 + Postgres)
 
 The API backend supports React web and React Native mobile clients.
 
-**Prerequisites:** Redis server, PostgreSQL database, AWS S3 bucket, and all env vars set in `.env`.
+**Prerequisites:** Redis server, PostgreSQL database, Cloudflare R2 bucket, and all env vars set in `.env`.
 
 ```bash
 # One-time: create the database schema
@@ -192,7 +192,7 @@ tennis-coach/
 │   │   ├── auth.py         # /auth/google, /auth/callback, /auth/me
 │   │   └── history.py      # History / progress / compare endpoints
 │   ├── services/
-│   │   ├── storage.py      # S3 upload + presigned URLs
+│   │   ├── storage.py      # R2 upload + presigned URLs
 │   │   ├── job_store.py    # Redis job state (user-scoped)
 │   │   ├── user_store.py   # Redis user records (90-day TTL)
 │   │   └── history.py      # SQL service layer (players + sessions)
@@ -216,7 +216,7 @@ tennis-coach/
 | Frontend | Next.js 14 + TypeScript + Tailwind CSS |
 | REST API | FastAPI + uvicorn |
 | Async jobs | Celery + Redis |
-| File storage | AWS S3 (boto3) |
+| File storage | Cloudflare R2 (boto3) |
 | Pose detection | MediaPipe |
 | Video processing | OpenCV (headless) |
 | AI coaching | Anthropic Claude (`claude-sonnet-4-6`) |
