@@ -68,7 +68,7 @@ function reducer(state: AppState, action: AppAction): AppState {
 // Upload + polling orchestration hook
 // ---------------------------------------------------------------------------
 
-function useTennisCoach(token: string | null) {
+function useCourtCoach(token: string | null) {
   const [state, dispatch] = useReducer(reducer, { phase: "idle" });
   const [file, setFile] = useState<File | null>(null);
   const pollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -152,10 +152,10 @@ function useAuth() {
     const params = new URLSearchParams(window.location.search);
     const urlToken = params.get("token");
     if (urlToken) {
-      localStorage.setItem("tennis_jwt", urlToken);
+      localStorage.setItem("courtcoach_jwt", urlToken);
       window.history.replaceState({}, "", window.location.pathname);
     }
-    const stored = urlToken ?? localStorage.getItem("tennis_jwt");
+    const stored = urlToken ?? localStorage.getItem("courtcoach_jwt");
     if (!stored) {
       setLoading(false);
       return;
@@ -164,14 +164,14 @@ function useAuth() {
     getMe(stored)
       .then((u) => setUser(u))
       .catch(() => {
-        localStorage.removeItem("tennis_jwt");
+        localStorage.removeItem("courtcoach_jwt");
         setToken(null);
       })
       .finally(() => setLoading(false));
   }, []);
 
   const signOut = useCallback(() => {
-    localStorage.removeItem("tennis_jwt");
+    localStorage.removeItem("courtcoach_jwt");
     setToken(null);
     setUser(null);
   }, []);
@@ -1507,7 +1507,7 @@ function LandingPage({ onSignIn }: { onSignIn: () => void }) {
 
 export default function Home() {
   const { token, user, loading: authLoading, signIn, signOut } = useAuth();
-  const { state, file, setFile, analyze, reset } = useTennisCoach(token);
+  const { state, file, setFile, analyze, reset } = useCourtCoach(token);
   const [activeTab, setActiveTab] = useState<Tab>("analyze");
 
   const handleFile = useCallback((f: File) => setFile(f), [setFile]);

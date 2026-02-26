@@ -30,7 +30,7 @@ const SCENARIOS = [
       await page.goto(BASE_URL, { waitUntil: "networkidle2" });
       await sleep(WAIT_MS);
       await page.evaluate(() => {
-        localStorage.removeItem("tennis_jwt");
+        localStorage.removeItem("courtcoach_jwt");
       });
       await page.reload({ waitUntil: "networkidle2" });
       await sleep(WAIT_MS);
@@ -113,7 +113,7 @@ async function isPortInUse(port) {
 }
 
 async function main() {
-  console.log("🎾 Tennis Coach Screenshot Capture\n");
+  console.log("CourtCoach Screenshot Capture\n");
 
   // Start dev server if not already running
   let devServer = null;

@@ -1,6 +1,6 @@
 # Screenshots
 
-Auto-generated screenshots of the AI Tennis Coach frontend.
+Auto-generated screenshots of the CourtCoach frontend.
 
 ## Captured scenarios
 
