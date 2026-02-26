@@ -25,7 +25,7 @@ def run_analysis(
     job_id: str,
     input_s3_key: str,
     original_filename: str,
-    user_id: str | None = None,
+    user_id: str = None,
 ) -> None:
     """
     Full analysis pipeline as a Celery task.

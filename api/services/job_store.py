@@ -50,11 +50,12 @@ def _now_iso() -> str:
 # Public API
 # ---------------------------------------------------------------------------
 
-def create_job(job_id: str) -> Dict[str, Any]:
+def create_job(job_id: str, user_id: str = "") -> Dict[str, Any]:
     """Insert a new job record with status=pending. Returns the record."""
     now = _now_iso()
     record: Dict[str, Any] = {
         "job_id": job_id,
+        "user_id": user_id,
         "status": "pending",
         "progress": 0,
         "message": "Queued",

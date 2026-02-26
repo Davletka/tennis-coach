@@ -36,6 +36,31 @@ streamlit run app.py
 5. View the annotated video and coaching tabs (Swing / Footwork / Stance / Tactics / Priorities)
 6. Download the annotated video with the download button
 
+## Running with Docker
+
+The project ships with separate Dockerfiles for each service and a `docker-compose.yml` that orchestrates everything.
+
+```bash
+cp .env.example .env   # fill in ANTHROPIC_API_KEY, AWS credentials, etc.
+docker compose up --build
+```
+
+| Service | URL |
+|---------|-----|
+| Streamlit UI | http://localhost:8501 |
+| FastAPI docs | http://localhost:8000/docs |
+| Redis | localhost:6379 |
+
+Individual images:
+
+```bash
+docker build -f Dockerfile.streamlit -t tennis-streamlit .
+docker build -f Dockerfile.api      -t tennis-api       .
+docker build -f Dockerfile.worker   -t tennis-worker    .
+```
+
+> **Note:** `Dockerfile.api` uses `requirements-api.txt` (no MediaPipe/OpenCV) for a leaner image. `Dockerfile.streamlit` and `Dockerfile.worker` use the full `requirements.txt`.
+
 ## Running the REST API (FastAPI + Celery + Redis + S3 + Postgres)
 
 The API backend supports React web and React Native mobile clients.
@@ -60,18 +85,29 @@ Set `DATABASE_URL` in `.env` (default: `postgresql://postgres:postgres@localhost
 
 Interactive API docs: `http://localhost:8000/docs`
 
+### Authentication
+
+All `/api/v1/*` routes require a `Authorization: Bearer <token>` header. Obtain a token via the OAuth flow:
+
+1. Redirect the user to `GET /auth/google`
+2. After consent, Google redirects to `/auth/callback`, which issues a JWT and redirects to `{FRONTEND_URL}/auth/callback?token=<jwt>`
+3. Include the token in subsequent API requests
+
 ### Endpoints
 
-| Method | Path | Description |
-|--------|------|-------------|
-| `POST` | `/api/v1/analyze` | Upload video + optional `user_id` → returns `job_id` (202 Accepted) |
-| `GET` | `/api/v1/jobs/{job_id}` | Poll status + progress (0–100%) |
-| `GET` | `/api/v1/jobs/{job_id}/result` | Fetch coaching report, metrics, and presigned video URLs |
-| `GET` | `/api/v1/users/{user_id}/history` | Paginated session list with presigned URLs |
-| `GET` | `/api/v1/users/{user_id}/progress` | Time-series of scalar metrics for charting |
-| `POST` | `/api/v1/users/{user_id}/compare` | Delta coaching between two sessions |
+| Method | Path | Auth | Description |
+|--------|------|------|-------------|
+| `GET` | `/auth/google` | — | Start Google OAuth flow (302 redirect) |
+| `GET` | `/auth/callback` | — | OAuth callback → sign JWT → redirect to frontend |
+| `GET` | `/auth/me` | Required | Return authenticated user profile |
+| `POST` | `/api/v1/analyze` | Required | Upload video → returns `job_id` (202 Accepted) |
+| `GET` | `/api/v1/jobs/{job_id}` | Required | Poll status + progress (0–100%) |
+| `GET` | `/api/v1/jobs/{job_id}/result` | Required | Fetch coaching report, metrics, and presigned video URLs |
+| `GET` | `/api/v1/users/{user_id}/history` | Required | Paginated session list with presigned URLs |
+| `GET` | `/api/v1/users/{user_id}/progress` | Required | Time-series of scalar metrics for charting |
+| `POST` | `/api/v1/users/{user_id}/compare` | Required | Delta coaching between two sessions |
 
-Pass `user_id` (UUID) as a form field to `POST /analyze` to associate the analysis with a player. Sessions are stored in PostgreSQL; ephemeral jobs expire from Redis after 24h regardless.
+Sessions are persisted to PostgreSQL on every completed analysis. Ephemeral job state expires from Redis after 24h.
 
 ## Project Structure
 
@@ -82,18 +118,29 @@ tennis-coach/
 ├── celery_app.py           # Celery instance (broker=Redis)
 ├── db_schema.sql           # PostgreSQL schema (run once manually)
 ├── requirements.txt
+├── requirements-api.txt    # Lean deps for the API service (no MediaPipe/OpenCV)
+├── Dockerfile.streamlit
+├── Dockerfile.api
+├── Dockerfile.worker
+├── docker-compose.yml
 ├── .env.example
 ├── api/
 │   ├── main.py             # FastAPI app factory + CORS + lifespan DB pool
 │   ├── settings.py         # Pydantic settings (env vars)
 │   ├── models.py           # Request/response Pydantic models
 │   ├── db.py               # asyncpg connection pool singleton
+│   ├── auth/
+│   │   ├── google.py       # Google OAuth URL builder + token exchange
+│   │   ├── jwt.py          # JWT sign + verify (python-jose HS256)
+│   │   └── dependencies.py # get_current_user FastAPI dependency
 │   ├── routes/
 │   │   ├── analysis.py     # Job endpoints (analyze / status / result)
+│   │   ├── auth.py         # /auth/google, /auth/callback, /auth/me
 │   │   └── history.py      # History / progress / compare endpoints
 │   ├── services/
 │   │   ├── storage.py      # S3 upload + presigned URLs
-│   │   ├── job_store.py    # Redis job state
+│   │   ├── job_store.py    # Redis job state (user-scoped)
+│   │   ├── user_store.py   # Redis user records (90-day TTL)
 │   │   └── history.py      # SQL service layer (players + sessions)
 │   └── tasks/
 │       └── analyze.py      # Celery task: full pipeline + Postgres persist
@@ -120,4 +167,5 @@ tennis-coach/
 | Video processing | OpenCV (headless) |
 | AI coaching | Anthropic Claude (`claude-sonnet-4-6`) |
 | Math | NumPy |
+| Auth | Google OAuth + python-jose (JWT) |
 | Database | PostgreSQL (asyncpg / psycopg2) |

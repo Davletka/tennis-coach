@@ -19,6 +19,25 @@ class Settings(BaseSettings):
     # Presigned URL expiry in seconds (1 hour)
     presigned_url_expiry: int = 3600
 
+    # Google OAuth
+    google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "http://localhost:8000/auth/callback"
+
+    # JWT
+    jwt_secret: str = "change-me"
+    jwt_algorithm: str = "HS256"
+    jwt_expiry_hours: int = 24
+
+    # Frontend
+    frontend_url: str = "http://localhost:3000"
+
+    # User TTL in seconds (90 days)
+    user_ttl: int = 7_776_000
+
+    # OAuth state TTL in seconds (5 minutes)
+    oauth_state_ttl: int = 300
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

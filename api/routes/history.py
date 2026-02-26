@@ -4,15 +4,18 @@ History / Progress / Compare routes:
   GET  /api/v1/users/{user_id}/history          — paginated session list
   GET  /api/v1/users/{user_id}/progress         — time-series scalar metrics
   POST /api/v1/users/{user_id}/compare          — delta coaching between two sessions
+
+All routes require authentication. The authenticated user may only access their
+own sessions; requesting another user's data returns 403.
 """
 from __future__ import annotations
 
 import uuid
-from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 from api import db
+from api.auth.dependencies import get_current_user
 from api.models import (
     CompareRequest,
     CompareResponse,
@@ -30,20 +33,18 @@ from pipeline.compare_coach import compute_metric_deltas, get_delta_coaching
 router = APIRouter(prefix="/api/v1/users/{user_id}")
 
 
-def _validate_user_id(user_id: str) -> str:
+def _validate_uuid(value: str, field: str) -> str:
     try:
-        uuid.UUID(user_id)
+        uuid.UUID(value)
     except ValueError:
-        raise HTTPException(status_code=422, detail=f"user_id '{user_id}' is not a valid UUID.")
-    return user_id
+        raise HTTPException(status_code=422, detail=f"{field} '{value}' is not a valid UUID.")
+    return value
 
 
-def _validate_session_id(session_id: str) -> str:
-    try:
-        uuid.UUID(session_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail=f"session_id '{session_id}' is not a valid UUID.")
-    return session_id
+def _check_ownership(user_id: str, current_user: dict) -> None:
+    """Raise 403 if the path user_id doesn't match the authenticated user."""
+    if user_id != current_user["sub"]:
+        raise HTTPException(status_code=403, detail="Access denied.")
 
 
 # ---------------------------------------------------------------------------
@@ -55,12 +56,15 @@ async def get_history(
     user_id: str,
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
+    current_user: dict = Depends(get_current_user),
 ):
     """
-    Return a paginated list of analysis sessions for the given player.
+    Return a paginated list of analysis sessions for the authenticated player.
     Presigned S3 URLs are generated fresh on each call.
     """
-    _validate_user_id(user_id)
+    _validate_uuid(user_id, "user_id")
+    _check_ownership(user_id, current_user)
+
     pool = db.get_pool()
     sessions_raw, total = await history.list_sessions(pool, user_id, limit=limit, offset=offset)
 
@@ -104,12 +108,15 @@ async def get_history(
 async def get_progress(
     user_id: str,
     limit: int = Query(default=50, ge=1, le=200),
+    current_user: dict = Depends(get_current_user),
 ):
     """
     Return chronological time-series of scalar metrics for charting.
     No presigned URLs — numeric data only, fast.
     """
-    _validate_user_id(user_id)
+    _validate_uuid(user_id, "user_id")
+    _check_ownership(user_id, current_user)
+
     pool = db.get_pool()
     rows = await history.get_sessions_for_progress(pool, user_id, limit=limit)
 
@@ -143,16 +150,21 @@ async def get_progress(
 # ---------------------------------------------------------------------------
 
 @router.post("/compare", response_model=CompareResponse)
-async def compare_sessions(user_id: str, body: CompareRequest):
+async def compare_sessions(
+    user_id: str,
+    body: CompareRequest,
+    current_user: dict = Depends(get_current_user),
+):
     """
-    Compare two sessions belonging to the same player and return delta coaching.
+    Compare two sessions belonging to the authenticated player and return delta coaching.
 
-    Both sessions must belong to *user_id* — prevents cross-user data leakage.
-    Claude is called synchronously (2-5s, acceptable for on-demand comparison).
+    Both sessions must belong to *user_id*. Claude is called synchronously (2-5s,
+    acceptable for on-demand comparison).
     """
-    _validate_user_id(user_id)
-    _validate_session_id(body.session_a_id)
-    _validate_session_id(body.session_b_id)
+    _validate_uuid(user_id, "user_id")
+    _check_ownership(user_id, current_user)
+    _validate_uuid(body.session_a_id, "session_a_id")
+    _validate_uuid(body.session_b_id, "session_b_id")
 
     if body.session_a_id == body.session_b_id:
         raise HTTPException(status_code=400, detail="session_a_id and session_b_id must be different.")
