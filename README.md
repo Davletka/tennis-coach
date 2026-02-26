@@ -39,6 +39,48 @@ Open http://localhost:3000. The frontend requires the FastAPI backend running (s
 3. View the annotated video and coaching tabs (Swing / Footwork / Stance / Tactics / Priorities)
 4. Download the annotated video or expand **Raw Metrics** for joint angle stats
 
+## Makefile
+
+A `Makefile` is provided for common development tasks:
+
+```bash
+make help            # list all targets
+
+# Setup
+make install         # create .venv and install full Python deps + pytest
+make install-api     # lightweight API-only deps (no MediaPipe/OpenCV)
+make install-frontend
+
+# Local dev (each in its own terminal)
+make dev-redis
+make dev-api
+make dev-worker
+make dev-frontend
+
+# Docker
+make docker-build
+make docker-up
+make docker-down
+make docker-logs
+
+# Quality
+make test            # run pytest (68 tests)
+make lint            # flake8 + eslint
+make clean
+```
+
+## Testing
+
+Unit tests live in `tests/` and cover math helpers, metrics aggregation, and all Pydantic API models.
+
+```bash
+make test
+# or directly:
+PYTHONPATH=. .venv/bin/pytest tests/ -v
+```
+
+No external services (Redis, S3, Postgres) are required to run the test suite.
+
 ## Running with Docker
 
 The project ships with separate Dockerfiles for each service and a `docker-compose.yml` that orchestrates everything.
@@ -130,6 +172,8 @@ tennis-coach/
 ├── Dockerfile.worker
 ├── docker-compose.yml
 ├── .env.example
+├── Makefile                # dev/test/docker targets
+├── tests/                  # pytest suite (math helpers, metrics, models)
 ├── api/
 │   ├── main.py             # FastAPI app factory + CORS + lifespan DB pool
 │   ├── settings.py         # Pydantic settings (env vars)
