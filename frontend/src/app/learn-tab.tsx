@@ -1,6 +1,8 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import type React from "react";
 import {
   LEARN_CONTENT,
   getLessonByRef,
@@ -22,6 +24,26 @@ import {
   unmarkLessonComplete,
   type UserProfile,
 } from "@/lib/api";
+
+// ---------------------------------------------------------------------------
+// 3D scene registry — loaded client-side only (ssr: false)
+// ---------------------------------------------------------------------------
+
+const HighBounceForehand3D = dynamic(
+  () => import("@/components/scenes/HighBounceForehand3D"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-80 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center">
+        <span className="text-sm text-slate-400">Loading 3D scene…</span>
+      </div>
+    ),
+  },
+);
+
+const SCENE_REGISTRY: Record<string, React.ComponentType<{ caption?: string }>> = {
+  "high-bounce-forehand": HighBounceForehand3D,
+};
 
 // ---------------------------------------------------------------------------
 // Navigation state machine
@@ -153,6 +175,17 @@ function ContentBlockView({ block }: { block: ContentBlock }) {
           )}
         </div>
       );
+    case "3d-scene": {
+      const SceneComponent = block.sceneId ? SCENE_REGISTRY[block.sceneId] : undefined;
+      if (!SceneComponent) return null;
+      return (
+        <div className="my-4">
+          <div className="rounded-xl overflow-hidden border border-slate-200">
+            <SceneComponent caption={block.caption} />
+          </div>
+        </div>
+      );
+    }
     default:
       return null;
   }
