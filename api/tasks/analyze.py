@@ -15,7 +15,7 @@ from api.services import job_store, storage
 
 
 # ---------------------------------------------------------------------------
-# Helper: reconstruct AggregatedMetrics from a stored metrics dict
+# Helpers: reconstruct metrics dataclasses from stored dicts
 # ---------------------------------------------------------------------------
 
 def _metrics_from_dict(d: dict):
@@ -60,6 +60,40 @@ def _metrics_from_dict(d: dict):
     return agg
 
 
+def _per_swing_from_dict(d: dict):
+    """Reconstruct a PerSwingMetrics dataclass from a serialised dict."""
+    from pipeline.metrics import PerSwingMetrics, AngleStat
+
+    def _angle(ad: Optional[dict]) -> AngleStat:
+        if ad is None:
+            return AngleStat()
+        return AngleStat(
+            mean=ad.get("mean"),
+            min=ad.get("min"),
+            max=ad.get("max"),
+            std=ad.get("std"),
+        )
+
+    return PerSwingMetrics(
+        swing_index=d["swing_index"],
+        peak_frame=d["peak_frame"],
+        window_start_frame=d["window_start_frame"],
+        window_end_frame=d["window_end_frame"],
+        peak_wrist_speed=d["peak_wrist_speed"],
+        com_x_at_peak=d.get("com_x_at_peak"),
+        right_elbow=_angle(d.get("right_elbow")),
+        left_elbow=_angle(d.get("left_elbow")),
+        right_shoulder=_angle(d.get("right_shoulder")),
+        left_shoulder=_angle(d.get("left_shoulder")),
+        right_knee=_angle(d.get("right_knee")),
+        left_knee=_angle(d.get("left_knee")),
+        torso_rotation_mean=d.get("torso_rotation_mean"),
+        torso_rotation_max=d.get("torso_rotation_max"),
+        stance_width_mean=d.get("stance_width_mean"),
+        com_x_range=d.get("com_x_range"),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Celery task
 # ---------------------------------------------------------------------------
@@ -99,12 +133,35 @@ def run_analysis(
         # Fast path: skip straight to coaching if checkpoint is available
         # ----------------------------------------------------------------
         if resume_from == "coaching":
-            _progress(95, "Generating coaching feedback")
+            _progress(75, "Generating per-swing analysis")
             job = job_store.get_job(job_id)
             agg = _metrics_from_dict(job["metrics"])
             fps = job["fps"]
             total_source_frames = job["total_source_frames"]
 
+            # Re-run per-swing coaching if metrics are available
+            from pipeline.coach import get_per_swing_coaching
+            per_swing_raw = job.get("per_swing_metrics", [])
+            if per_swing_raw:
+                per_swing_list = [_per_swing_from_dict(d) for d in per_swing_raw]
+                swing_coaching_list = get_per_swing_coaching(
+                    per_swing_list, fps, api_key=settings.anthropic_api_key
+                )
+                per_swing_coaching_dicts = [
+                    {
+                        "swing_index": sc.swing_index,
+                        "quick_note": sc.quick_note,
+                        "swing_mechanics": sc.swing_mechanics,
+                        "footwork_movement": sc.footwork_movement,
+                        "stance_posture": sc.stance_posture,
+                        "shot_selection_tactics": sc.shot_selection_tactics,
+                        "top_3_priorities": sc.top_3_priorities,
+                    }
+                    for sc in swing_coaching_list
+                ]
+                job_store.update_job(job_id, per_swing_coaching=per_swing_coaching_dicts)
+
+            _progress(88, "Generating coaching feedback")
             report = get_coaching_feedback(
                 agg,
                 fps,
@@ -210,6 +267,10 @@ def run_analysis(
 
             agg = aggregate_metrics(frame_metrics, pose_results)
 
+            # Compute per-swing metrics
+            from pipeline.metrics import compute_per_swing_metrics
+            per_swing_list = compute_per_swing_metrics(frame_metrics, agg.swing_events)
+
             # Checkpoint metrics before annotation (enables coaching-only retry)
             metrics_dict = {
                 "right_elbow": agg.right_elbow.to_dict(),
@@ -235,7 +296,28 @@ def run_analysis(
                 "pose_detected_frames": agg.pose_detected_frames,
                 "detection_rate": round(agg.detection_rate, 3),
             }
-            job_store.update_job(job_id, metrics=metrics_dict)
+            per_swing_metrics_dicts = [
+                {
+                    "swing_index": p.swing_index,
+                    "peak_frame": p.peak_frame,
+                    "window_start_frame": p.window_start_frame,
+                    "window_end_frame": p.window_end_frame,
+                    "peak_wrist_speed": round(p.peak_wrist_speed, 4),
+                    "com_x_at_peak": round(p.com_x_at_peak, 3) if p.com_x_at_peak is not None else None,
+                    "right_elbow": p.right_elbow.to_dict(),
+                    "left_elbow": p.left_elbow.to_dict(),
+                    "right_shoulder": p.right_shoulder.to_dict(),
+                    "left_shoulder": p.left_shoulder.to_dict(),
+                    "right_knee": p.right_knee.to_dict(),
+                    "left_knee": p.left_knee.to_dict(),
+                    "torso_rotation_mean": round(p.torso_rotation_mean, 1) if p.torso_rotation_mean is not None else None,
+                    "torso_rotation_max": round(p.torso_rotation_max, 1) if p.torso_rotation_max is not None else None,
+                    "stance_width_mean": round(p.stance_width_mean, 3) if p.stance_width_mean is not None else None,
+                    "com_x_range": round(p.com_x_range, 3) if p.com_x_range is not None else None,
+                }
+                for p in per_swing_list
+            ]
+            job_store.update_job(job_id, metrics=metrics_dict, per_swing_metrics=per_swing_metrics_dicts)
 
             # ----------------------------------------------------------------
             # 5. Serialize per-frame landmark + angle data for frontend rendering
@@ -265,9 +347,31 @@ def run_analysis(
             job_store.update_job(job_id, frame_data=frame_data)
 
             # ----------------------------------------------------------------
-            # 6. Get Claude coaching feedback
+            # 6. Per-swing Claude coaching
             # ----------------------------------------------------------------
-            _progress(80, "Generating coaching feedback")
+            _progress(75, "Generating per-swing analysis")
+            from pipeline.coach import get_per_swing_coaching
+            swing_coaching_list = get_per_swing_coaching(
+                per_swing_list, fps, api_key=settings.anthropic_api_key
+            )
+            per_swing_coaching_dicts = [
+                {
+                    "swing_index": sc.swing_index,
+                    "quick_note": sc.quick_note,
+                    "swing_mechanics": sc.swing_mechanics,
+                    "footwork_movement": sc.footwork_movement,
+                    "stance_posture": sc.stance_posture,
+                    "shot_selection_tactics": sc.shot_selection_tactics,
+                    "top_3_priorities": sc.top_3_priorities,
+                }
+                for sc in swing_coaching_list
+            ]
+            job_store.update_job(job_id, per_swing_coaching=per_swing_coaching_dicts)
+
+            # ----------------------------------------------------------------
+            # 7. Get Claude overall coaching feedback
+            # ----------------------------------------------------------------
+            _progress(88, "Generating coaching feedback")
             report = get_coaching_feedback(
                 agg,
                 fps,
@@ -284,7 +388,7 @@ def run_analysis(
             }
 
             # ----------------------------------------------------------------
-            # 7. Mark job completed
+            # 8. Mark job completed
             # ----------------------------------------------------------------
             job_store.update_job(
                 job_id,
@@ -299,7 +403,7 @@ def run_analysis(
             )
 
             # ----------------------------------------------------------------
-            # 8. Persist session to Postgres (only when user_id is provided)
+            # 9. Persist session to Postgres (only when user_id is provided)
             # Celery worker has no async event loop, so use psycopg2 (sync).
             # ----------------------------------------------------------------
             if user_id is not None:

@@ -25,6 +25,7 @@ import {
   type CompareResponse,
   type ReferencePoseResult,
   type TargetAngles,
+  type PerSwingAnalysis,
 } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
@@ -791,6 +792,160 @@ function drawDiff(
   }
 }
 
+// ---------------------------------------------------------------------------
+// Per-swing breakdown card
+// ---------------------------------------------------------------------------
+
+const SWING_COACHING_TABS = [
+  { key: "swing_mechanics", label: "Mechanics" },
+  { key: "footwork_movement", label: "Footwork" },
+  { key: "stance_posture", label: "Stance" },
+  { key: "shot_selection_tactics", label: "Tactics" },
+] as const;
+
+type SwingCoachingKey = (typeof SWING_COACHING_TABS)[number]["key"];
+
+function SwingCard({
+  analysis,
+  swingNumber,
+  fps,
+  onSeek,
+}: {
+  analysis: PerSwingAnalysis;
+  swingNumber: number;
+  fps: number;
+  onSeek: (t: number) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [activeTab, setActiveTab] = useState<SwingCoachingKey>("swing_mechanics");
+
+  const peakTimeSecs = analysis.peak_frame / Math.max(fps, 1);
+  const m = analysis.metrics;
+
+  function fmtAngle(stat: { mean: number | null; min: number | null; max: number | null }): string {
+    if (stat.mean === null) return "—";
+    const mean = stat.mean.toFixed(0);
+    if (stat.min !== null && stat.max !== null) {
+      return `${mean}° (${stat.min.toFixed(0)}–${stat.max.toFixed(0)})`;
+    }
+    return `${mean}°`;
+  }
+
+  return (
+    <div className="rounded-xl border border-gray-700 bg-gray-900">
+      {/* Header */}
+      <div className="flex items-center gap-3 px-4 py-3">
+        <span className="flex-shrink-0 rounded-full bg-green-900/60 px-2.5 py-0.5 text-xs font-bold text-green-400">
+          #{swingNumber}
+        </span>
+        <button
+          onClick={() => onSeek(peakTimeSecs)}
+          className="flex-shrink-0 rounded bg-gray-800 px-2 py-0.5 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition-colors tabular-nums"
+          title="Seek to this swing"
+        >
+          {peakTimeSecs < 60
+            ? `${peakTimeSecs.toFixed(1)}s`
+            : `${Math.floor(peakTimeSecs / 60)}:${(peakTimeSecs % 60).toFixed(0).padStart(2, "0")}`}
+          {" ↗"}
+        </button>
+        <p className="flex-1 truncate text-xs italic text-gray-400">
+          {analysis.coaching.quick_note || "—"}
+        </p>
+        <button
+          onClick={() => setExpanded((o) => !o)}
+          className="flex-shrink-0 text-gray-500 hover:text-gray-300 transition-colors"
+          aria-label={expanded ? "Collapse" : "Expand"}
+        >
+          <svg
+            className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`}
+            fill="none"
+            viewBox="0 0 24 24"
+            stroke="currentColor"
+            strokeWidth={2}
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+          </svg>
+        </button>
+      </div>
+
+      {/* Expanded body */}
+      {expanded && (
+        <div className="border-t border-gray-700 p-4 space-y-4">
+          {/* Quick note */}
+          {analysis.coaching.quick_note && (
+            <p className="text-sm italic text-gray-300">{analysis.coaching.quick_note}</p>
+          )}
+
+          {/* Compact metrics grid */}
+          <div>
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-500">
+              Swing Metrics (mean, min–max)
+            </p>
+            <div className="grid grid-cols-2 gap-x-6 gap-y-1 text-xs sm:grid-cols-3">
+              {[
+                ["Right Elbow", fmtAngle(m.right_elbow)],
+                ["Left Elbow", fmtAngle(m.left_elbow)],
+                ["Right Shoulder", fmtAngle(m.right_shoulder)],
+                ["Left Shoulder", fmtAngle(m.left_shoulder)],
+                ["Right Knee", fmtAngle(m.right_knee)],
+                ["Left Knee", fmtAngle(m.left_knee)],
+                ["Peak Speed", m.peak_wrist_speed.toFixed(4)],
+                ["Torso Rot.", m.torso_rotation_mean !== null ? `${m.torso_rotation_mean.toFixed(1)}°` : "—"],
+                ["Stance Width", m.stance_width_mean !== null ? m.stance_width_mean.toFixed(2) : "—"],
+              ].map(([k, v]) => (
+                <div key={k}>
+                  <dt className="text-gray-500">{k}</dt>
+                  <dd className="font-medium text-gray-200 tabular-nums">{v}</dd>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Tabbed coaching breakdown */}
+          <div className="rounded-lg border border-gray-700">
+            <div className="flex border-b border-gray-700">
+              {SWING_COACHING_TABS.map(({ key, label }) => (
+                <button
+                  key={key}
+                  onClick={() => setActiveTab(key)}
+                  className={[
+                    "flex-1 py-2 text-xs font-medium transition-colors",
+                    activeTab === key
+                      ? "border-b-2 border-green-500 text-green-400"
+                      : "text-gray-400 hover:text-gray-200",
+                  ].join(" ")}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <div className="p-3 text-xs text-gray-200 whitespace-pre-wrap leading-relaxed min-h-[3rem]">
+              {analysis.coaching[activeTab] || <span className="text-gray-500 italic">No data.</span>}
+            </div>
+          </div>
+
+          {/* Per-swing priorities */}
+          {analysis.coaching.top_3_priorities.length > 0 && (
+            <div>
+              <p className="mb-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500">
+                Priorities
+              </p>
+              <ol className="space-y-1 text-xs text-gray-200">
+                {analysis.coaching.top_3_priorities.map((p, i) => (
+                  <li key={i} className="flex gap-2">
+                    <span className="flex-shrink-0 font-bold text-green-400">{i + 1}.</span>
+                    <span>{p}</span>
+                  </li>
+                ))}
+              </ol>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function ResultView({
   result,
   token,
@@ -811,11 +966,42 @@ function ResultView({
   const [showLabels, setShowLabels] = useState(true);
   const [refPose, setRefPose] = useState<ReferencePoseResult | null>(null);
   const [refLoading, setRefLoading] = useState(false);
+  const [smartPlay, setSmartPlay] = useState(true);
+  const smartPlayRef = useRef(true);
+  useEffect(() => { smartPlayRef.current = smartPlay; }, [smartPlay]);
+  const seekingRef = useRef(false);
 
   const swingFrames = useMemo(
     () => new Set(result.metrics.swing_events.map((e) => e.frame_index)),
     [result.metrics.swing_events],
   );
+
+  const duration = result.total_source_frames / result.fps;
+
+  // Build merged segments centred on each detected swing event
+  const segments = useMemo(() => {
+    if (!result.metrics.swing_events.length) return [];
+    const BEFORE = Math.round(result.fps * 1.5); // frames before peak
+    const AFTER  = Math.round(result.fps * 2.0); // frames after peak (include follow-through)
+    const raw = result.metrics.swing_events.map((e) => ({
+      start: Math.max(0, (e.frame_index - BEFORE) / result.fps),
+      end:   Math.min(duration, (e.frame_index + AFTER)  / result.fps),
+    }));
+    const sorted = [...raw].sort((a, b) => a.start - b.start);
+    const merged: { start: number; end: number }[] = [];
+    for (const s of sorted) {
+      const last = merged[merged.length - 1];
+      if (last && s.start <= last.end + 0.5) {
+        last.end = Math.max(last.end, s.end);
+      } else {
+        merged.push({ ...s });
+      }
+    }
+    return merged;
+  }, [result, duration]);
+
+  const segmentsRef = useRef(segments);
+  useEffect(() => { segmentsRef.current = segments; }, [segments]);
 
   // Sync canvas sizes to their container (4:3 aspect ratio via CSS)
   useEffect(() => {
@@ -899,28 +1085,78 @@ function ResultView({
     return () => cancelAnimationFrame(rafId);
   }, [result, refPose, showGhost, showLabels, swingFrames]);
 
-  // Sync currentTime display and play/pause state
+  // Sync currentTime display and play/pause state; handle smart-play segment skipping
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    const onTime = () => setCurrentTime(video.currentTime);
+    const onTime = () => {
+      setCurrentTime(video.currentTime);
+      if (!smartPlayRef.current || !segmentsRef.current.length || seekingRef.current) return;
+      const t = video.currentTime;
+      const segs = segmentsRef.current;
+      const inSeg = segs.find((s) => t >= s.start - 0.05 && t <= s.end);
+      if (inSeg) {
+        // Slow down to 0.4× inside a swing segment
+        if (Math.abs(video.playbackRate - 0.4) > 0.01) video.playbackRate = 0.4;
+      } else {
+        // Jump to the next segment, or pause if all segments are done
+        const next = segs.find((s) => s.start > t);
+        if (next) {
+          seekingRef.current = true;
+          video.currentTime = next.start;
+        } else {
+          video.pause();
+        }
+      }
+    };
+    const onSeeked = () => { seekingRef.current = false; };
     const onPlay = () => setPlaying(true);
     const onPause = () => setPlaying(false);
     video.addEventListener("timeupdate", onTime);
+    video.addEventListener("seeked", onSeeked);
     video.addEventListener("play", onPlay);
     video.addEventListener("pause", onPause);
     return () => {
       video.removeEventListener("timeupdate", onTime);
+      video.removeEventListener("seeked", onSeeked);
       video.removeEventListener("play", onPlay);
       video.removeEventListener("pause", onPause);
     };
   }, []);
 
+  // Restore normal speed when smart play is turned off
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video || smartPlay) return;
+    video.playbackRate = 1.0;
+  }, [smartPlay]);
+
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
-    if (video.paused) video.play();
-    else video.pause();
+    if (video.paused) {
+      // In smart-play mode, ensure we start inside a segment
+      if (smartPlayRef.current && segmentsRef.current.length) {
+        const t = video.currentTime;
+        const segs = segmentsRef.current;
+        const inSeg = segs.some((s) => t >= s.start - 0.05 && t <= s.end);
+        if (!inSeg) {
+          const next = segs.find((s) => s.start > t) ?? segs[0];
+          video.currentTime = next.start;
+        }
+      }
+      video.play();
+    } else {
+      video.pause();
+    }
+  }, []);
+
+  const seekTo = useCallback((t: number) => {
+    const video = videoRef.current;
+    if (!video) return;
+    video.currentTime = t;
+    video.pause();
+    setSmartPlay(false);
   }, []);
 
   const handleRefUpload = useCallback(
@@ -940,8 +1176,6 @@ function ResultView({
     },
     [token],
   );
-
-  const duration = result.total_source_frames / result.fps;
 
   return (
     <div className="space-y-6">
@@ -1006,37 +1240,80 @@ function ResultView({
       </div>
 
       {/* Custom video controls + reference upload */}
-      <div className="flex items-center gap-3">
-        <button
-          onClick={togglePlay}
-          className="px-3 py-1 rounded bg-gray-700 text-sm text-white hover:bg-gray-600 transition-colors"
-        >
-          {playing ? "Pause" : "Play"}
-        </button>
-        <input
-          type="range"
-          min={0}
-          max={duration}
-          step={1 / result.fps}
-          value={currentTime}
-          onChange={(e) => {
-            const v = videoRef.current;
-            if (v) v.currentTime = +e.target.value;
-          }}
-          className="flex-1 accent-green-500"
-        />
-        <span className="text-xs text-gray-400 w-14 text-right">
-          {formatTime(currentTime)}
-        </span>
-        <label className="cursor-pointer rounded border border-dashed border-gray-600 px-3 py-1 text-xs text-gray-400 hover:border-blue-400 hover:text-blue-300 transition-colors whitespace-nowrap">
-          {refLoading ? "Processing…" : refPose ? "Reference ✓" : "+ Reference"}
-          <input
-            type="file"
-            accept="video/*"
-            className="hidden"
-            onChange={handleRefUpload}
+      <div className="space-y-2">
+        {/* Segment timeline — green bands mark detected swing windows */}
+        <div className="relative h-2 rounded-full bg-gray-700 overflow-hidden">
+          {segments.map((s, i) => (
+            <div
+              key={i}
+              className="absolute top-0 h-full bg-green-600/70"
+              style={{
+                left: `${(s.start / duration) * 100}%`,
+                width: `${((s.end - s.start) / duration) * 100}%`,
+              }}
+            />
+          ))}
+          <div
+            className="absolute top-0 left-0 h-full bg-white/25"
+            style={{ width: `${(currentTime / duration) * 100}%` }}
           />
-        </label>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <button
+            onClick={togglePlay}
+            className="px-3 py-1 rounded bg-gray-700 text-sm text-white hover:bg-gray-600 transition-colors"
+          >
+            {playing ? "Pause" : "Play"}
+          </button>
+
+          {/* Smart-play toggle: only show when swing events were detected */}
+          {segments.length > 0 && (
+            <button
+              onClick={() => setSmartPlay((p) => !p)}
+              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
+                smartPlay
+                  ? "bg-green-700 text-white hover:bg-green-600"
+                  : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+              }`}
+              title={
+                smartPlay
+                  ? "Smart Play: swing segments at 0.4× — click for full video"
+                  : "Full Play: normal speed — click for swing-only slow-mo"
+              }
+            >
+              {smartPlay ? "Smart ▶" : "Full ▶"}
+            </button>
+          )}
+
+          <input
+            type="range"
+            min={0}
+            max={duration}
+            step={1 / result.fps}
+            value={currentTime}
+            onChange={(e) => {
+              const v = videoRef.current;
+              if (v) v.currentTime = +e.target.value;
+            }}
+            className="flex-1 accent-green-500"
+          />
+          <span className="text-xs text-gray-400 w-20 text-right tabular-nums">
+            {formatTime(currentTime)}
+            {smartPlay && playing && segments.length > 0 && (
+              <span className="ml-1 text-green-400">0.4×</span>
+            )}
+          </span>
+          <label className="cursor-pointer rounded border border-dashed border-gray-600 px-3 py-1 text-xs text-gray-400 hover:border-blue-400 hover:text-blue-300 transition-colors whitespace-nowrap">
+            {refLoading ? "Processing…" : refPose ? "Reference ✓" : "+ Reference"}
+            <input
+              type="file"
+              accept="video/*"
+              className="hidden"
+              onChange={handleRefUpload}
+            />
+          </label>
+        </div>
       </div>
 
       {/* Legend */}
@@ -1060,6 +1337,23 @@ function ResultView({
           </span>
         )}
       </div>
+
+      {result.per_swing_analyses.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+            Per-Swing Breakdown ({result.per_swing_analyses.length} swing{result.per_swing_analyses.length !== 1 ? "s" : ""})
+          </h2>
+          {result.per_swing_analyses.map((a) => (
+            <SwingCard
+              key={a.swing_index}
+              analysis={a}
+              swingNumber={a.swing_index + 1}
+              fps={result.fps}
+              onSeek={seekTo}
+            />
+          ))}
+        </div>
+      )}
 
       <div className="space-y-2">
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">

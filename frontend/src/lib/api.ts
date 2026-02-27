@@ -95,6 +95,44 @@ export interface FrameData {
   lk: number | null; // left knee angle
 }
 
+export interface PerSwingMetricsResult {
+  swing_index: number;
+  peak_frame: number;
+  window_start_frame: number;
+  window_end_frame: number;
+  peak_wrist_speed: number;
+  com_x_at_peak: number | null;
+  right_elbow: AngleStatResult;
+  left_elbow: AngleStatResult;
+  right_shoulder: AngleStatResult;
+  left_shoulder: AngleStatResult;
+  right_knee: AngleStatResult;
+  left_knee: AngleStatResult;
+  torso_rotation_mean: number | null;
+  torso_rotation_max: number | null;
+  stance_width_mean: number | null;
+  com_x_range: number | null;
+}
+
+export interface SwingCoachingResult {
+  swing_index: number;
+  quick_note: string;
+  swing_mechanics: string;
+  footwork_movement: string;
+  stance_posture: string;
+  shot_selection_tactics: string;
+  top_3_priorities: string[];
+}
+
+export interface PerSwingAnalysis {
+  swing_index: number;
+  peak_frame: number;
+  window_start_frame: number;
+  window_end_frame: number;
+  metrics: PerSwingMetricsResult;
+  coaching: SwingCoachingResult;
+}
+
 export interface JobResultResponse {
   job_id: string;
   status: JobStatus;
@@ -104,6 +142,7 @@ export interface JobResultResponse {
   input_video_url: string;
   fps: number;
   total_source_frames: number;
+  per_swing_analyses: PerSwingAnalysis[];
 }
 
 // ---------------------------------------------------------------------------

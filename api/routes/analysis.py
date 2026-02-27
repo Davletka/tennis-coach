@@ -24,7 +24,10 @@ from api.models import (
     JobResultResponse,
     JobStatusResponse,
     MetricsResult,
+    PerSwingAnalysis,
+    PerSwingMetricsResult,
     ReferencePoseResult,
+    SwingCoachingResult,
     SwingEventResult,
 )
 from api.services import job_store, storage
@@ -220,6 +223,24 @@ async def get_job_result(job_id: str, current_user: dict = Depends(get_current_u
 
     coaching = CoachingReportResult(**coaching_raw)
 
+    # Build per-swing analyses by joining metrics + coaching dicts
+    psm_raw = record.get("per_swing_metrics", [])
+    psc_raw = record.get("per_swing_coaching", [])
+
+    per_swing_analyses = [
+        PerSwingAnalysis(
+            swing_index=m["swing_index"],
+            peak_frame=m["peak_frame"],
+            window_start_frame=m["window_start_frame"],
+            window_end_frame=m["window_end_frame"],
+            metrics=PerSwingMetricsResult(**m),
+            coaching=SwingCoachingResult(
+                **(psc_raw[i] if i < len(psc_raw) else {"swing_index": m["swing_index"]})
+            ),
+        )
+        for i, m in enumerate(psm_raw)
+    ]
+
     # Generate fresh presigned URL for the original video
     input_url = storage.presigned_url(record["input_s3_key"])
 
@@ -232,6 +253,7 @@ async def get_job_result(job_id: str, current_user: dict = Depends(get_current_u
         input_video_url=input_url,
         fps=record["fps"],
         total_source_frames=record["total_source_frames"],
+        per_swing_analyses=per_swing_analyses,
     )
 
 

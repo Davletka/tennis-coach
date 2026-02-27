@@ -123,6 +123,44 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 
+class PerSwingMetricsResult(BaseModel):
+    swing_index: int
+    peak_frame: int
+    window_start_frame: int
+    window_end_frame: int
+    peak_wrist_speed: float
+    com_x_at_peak: Optional[float] = None
+    right_elbow: AngleStatResult = AngleStatResult()
+    left_elbow: AngleStatResult = AngleStatResult()
+    right_shoulder: AngleStatResult = AngleStatResult()
+    left_shoulder: AngleStatResult = AngleStatResult()
+    right_knee: AngleStatResult = AngleStatResult()
+    left_knee: AngleStatResult = AngleStatResult()
+    torso_rotation_mean: Optional[float] = None
+    torso_rotation_max: Optional[float] = None
+    stance_width_mean: Optional[float] = None
+    com_x_range: Optional[float] = None
+
+
+class SwingCoachingResult(BaseModel):
+    swing_index: int = 0
+    quick_note: str = ""
+    swing_mechanics: str = ""
+    footwork_movement: str = ""
+    stance_posture: str = ""
+    shot_selection_tactics: str = ""
+    top_3_priorities: List[str] = []
+
+
+class PerSwingAnalysis(BaseModel):
+    swing_index: int
+    peak_frame: int
+    window_start_frame: int
+    window_end_frame: int
+    metrics: PerSwingMetricsResult
+    coaching: SwingCoachingResult
+
+
 class JobResultResponse(BaseModel):
     job_id: str
     status: JobStatus
@@ -132,6 +170,7 @@ class JobResultResponse(BaseModel):
     input_video_url: str
     fps: float
     total_source_frames: int
+    per_swing_analyses: List[PerSwingAnalysis] = []
 
 
 # ---------------------------------------------------------------------------

@@ -11,6 +11,7 @@ AI-powered tennis coaching app that analyzes uploaded tennis videos using pose d
 - **Form diff canvas** — side-by-side diff skeleton colored by deviation from Claude's target angles (green < 15°, yellow 15–30°, red > 30°)
 - **Reference pose overlay** — upload a reference video clip to generate a ghost skeleton (dashed) overlaid on the diff canvas
 - **AI coaching with target angles** — Claude Sonnet generates metrics-referenced feedback across 4 categories and recommends ideal joint angles for the player's shot type
+- **Per-swing breakdown** — each detected swing is analyzed individually; collapsible cards show per-swing metrics (joint angles, wrist speed, torso rotation) and AI coaching; clicking the timestamp chip seeks the video to that swing
 
 ## Setup
 

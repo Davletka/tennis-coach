@@ -223,6 +223,66 @@ def _angle_stat(values: List[Optional[float]]) -> AngleStat:
     )
 
 
+# ---------------------------------------------------------------------------
+# Per-swing metrics
+# ---------------------------------------------------------------------------
+
+SWING_WINDOW_BEFORE = 15  # frames before peak
+SWING_WINDOW_AFTER  = 30  # frames after peak (includes follow-through)
+
+
+@dataclass
+class PerSwingMetrics:
+    swing_index: int
+    peak_frame: int
+    window_start_frame: int
+    window_end_frame: int
+    peak_wrist_speed: float
+    com_x_at_peak: Optional[float] = None
+    right_elbow: AngleStat = field(default_factory=AngleStat)
+    left_elbow:  AngleStat = field(default_factory=AngleStat)
+    right_shoulder: AngleStat = field(default_factory=AngleStat)
+    left_shoulder:  AngleStat = field(default_factory=AngleStat)
+    right_knee:  AngleStat = field(default_factory=AngleStat)
+    left_knee:   AngleStat = field(default_factory=AngleStat)
+    torso_rotation_mean: Optional[float] = None
+    torso_rotation_max:  Optional[float] = None
+    stance_width_mean:   Optional[float] = None
+    com_x_range:         Optional[float] = None
+
+
+def compute_per_swing_metrics(
+    frame_metrics: List[FrameMetrics],
+    swing_events: List[SwingEvent],
+    window_before: int = SWING_WINDOW_BEFORE,
+    window_after:  int = SWING_WINDOW_AFTER,
+) -> List[PerSwingMetrics]:
+    result = []
+    for i, event in enumerate(swing_events):
+        start = max(0, event.frame_index - window_before)
+        end   = min(len(frame_metrics) - 1, event.frame_index + window_after)
+        window = frame_metrics[start:end + 1]
+
+        com_vals = [fm.com_x for fm in window if fm.com_x is not None]
+        psm = PerSwingMetrics(
+            swing_index=i, peak_frame=event.frame_index,
+            window_start_frame=start, window_end_frame=end,
+            peak_wrist_speed=event.wrist_speed, com_x_at_peak=event.com_x,
+            right_elbow=    _angle_stat([fm.right_elbow_angle    for fm in window]),
+            left_elbow=     _angle_stat([fm.left_elbow_angle     for fm in window]),
+            right_shoulder= _angle_stat([fm.right_shoulder_angle for fm in window]),
+            left_shoulder=  _angle_stat([fm.left_shoulder_angle  for fm in window]),
+            right_knee=     _angle_stat([fm.right_knee_angle     for fm in window]),
+            left_knee=      _angle_stat([fm.left_knee_angle      for fm in window]),
+            torso_rotation_mean=safe_mean([fm.torso_rotation for fm in window]),
+            torso_rotation_max= safe_max ([fm.torso_rotation for fm in window]),
+            stance_width_mean=  safe_mean([fm.stance_width   for fm in window]),
+            com_x_range=float(max(com_vals) - min(com_vals)) if com_vals else None,
+        )
+        result.append(psm)
+    return result
+
+
 def aggregate_metrics(
     frame_metrics: List[FrameMetrics],
     pose_results: List[Optional[LandmarkResult]],
