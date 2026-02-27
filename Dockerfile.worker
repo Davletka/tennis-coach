@@ -27,6 +27,7 @@ COPY config.py celery_app.py ./
 COPY api/ ./api/
 COPY pipeline/ ./pipeline/
 COPY utils/ ./utils/
+COPY activities/ ./activities/
 
 # Run as non-root
 RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
