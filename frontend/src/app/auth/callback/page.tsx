@@ -10,7 +10,7 @@ function CallbackHandler() {
   useEffect(() => {
     const token = params.get("token");
     if (token) {
-      localStorage.setItem("tennis_jwt", token);
+      localStorage.setItem("courtcoach_jwt", token);
     }
     router.replace("/");
   }, [params, router]);
