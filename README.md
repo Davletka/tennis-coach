@@ -7,8 +7,10 @@ AI-powered tennis coaching app that analyzes uploaded tennis videos using pose d
 - **Pose detection** — MediaPipe extracts 33 body landmarks per frame
 - **Joint angle analysis** — elbow, shoulder, and knee angles with mean/min/max/std stats
 - **Swing detection** — wrist speed peaks identify backswing/contact/follow-through events
-- **Pose overlay** — skeleton, joint angle labels, and wrist trail drawn live on the video via canvas; togglable per-element
-- **AI coaching** — Claude Sonnet generates metrics-referenced feedback across 4 categories
+- **Auto-zoom view** — video is auto-cropped to the player's bounding box using pose landmarks, with smooth lerp tracking
+- **Form diff canvas** — side-by-side diff skeleton colored by deviation from Claude's target angles (green < 15°, yellow 15–30°, red > 30°)
+- **Reference pose overlay** — upload a reference video clip to generate a ghost skeleton (dashed) overlaid on the diff canvas
+- **AI coaching with target angles** — Claude Sonnet generates metrics-referenced feedback across 4 categories and recommends ideal joint angles for the player's shot type
 
 ## Setup
 
@@ -35,8 +37,11 @@ Open http://localhost:3000. The frontend requires the FastAPI backend running (s
 1. Sign in with Google (top-right) — required for history tracking and comparisons
 2. Drag-and-drop or browse to select a tennis video (MP4, MOV, or AVI) on the **Analyze** tab
 3. Click **Analyze Video** — progress is shown while the job runs
-4. View the video with live pose overlay — toggle Skeleton / Angles / Trail controls; coaching tabs show Swing / Footwork / Stance / Tactics / Priorities
-5. Expand **Raw Metrics** for joint angle stats
+4. View the **side-by-side** result: left canvas shows auto-zoomed video tracking the player; right canvas shows the form diff skeleton colored by deviation from Claude's recommended angles
+5. Use **Play / Pause** and the seek slider to scrub through the video — both canvases update in sync
+6. Toggle **Ghost** to show/hide a dashed reference skeleton; toggle **Labels** to show/hide angle delta annotations
+7. Click **+ Reference** to upload a short reference clip — its average pose is extracted and shown as the ghost skeleton on the diff canvas
+8. Expand **Raw Metrics** for joint angle stats
 6. Switch to **History** to browse all past sessions (expandable coaching + metrics per session)
 7. Switch to **Compare** to select two sessions and get AI-generated delta coaching with metric changes
 8. Switch to **Progress** to see SVG sparkline charts for each metric across up to 30 sessions
@@ -151,6 +156,7 @@ All `/api/v1/*` routes require a `Authorization: Bearer <token>` header. Obtain 
 | `GET` | `/api/v1/jobs/{job_id}` | Required | Poll status + progress (0–100%) |
 | `GET` | `/api/v1/jobs/{job_id}/result` | Required | Fetch coaching report, metrics, per-frame landmark data, and presigned input video URL |
 | `POST` | `/api/v1/jobs/{job_id}/retry` | Required | Re-queue a failed job from the furthest checkpoint (coaching-only or full re-run) |
+| `POST` | `/api/v1/reference` | Required | Upload a reference video clip → returns averaged pose landmarks + key joint angles for ghost skeleton overlay |
 | `GET` | `/api/v1/users/{user_id}/history` | Required | Paginated session list with presigned URLs |
 | `GET` | `/api/v1/users/{user_id}/progress` | Required | Time-series of scalar metrics for charting |
 | `POST` | `/api/v1/users/{user_id}/compare` | Required | Delta coaching between two sessions |

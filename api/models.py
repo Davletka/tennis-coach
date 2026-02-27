@@ -79,6 +79,21 @@ class CoachingReportResult(BaseModel):
     stance_posture: str = ""
     shot_selection_tactics: str = ""
     top_3_priorities: List[str] = []
+    target_angles: Optional[dict] = None   # keys: right_elbow, left_elbow, right_shoulder, left_shoulder, right_knee, left_knee
+
+
+class ReferencePoseResult(BaseModel):
+    """Average pose extracted from a reference video clip."""
+    # 33 landmarks; each is [x, y] normalized [0,1], or null if not detected
+    avg_landmarks: List[Optional[List[float]]]
+    right_elbow: Optional[float] = None
+    left_elbow: Optional[float] = None
+    right_shoulder: Optional[float] = None
+    left_shoulder: Optional[float] = None
+    right_knee: Optional[float] = None
+    left_knee: Optional[float] = None
+    frames_analyzed: int = 0
+    detection_rate: float = 0.0
 
 
 class FrameData(BaseModel):

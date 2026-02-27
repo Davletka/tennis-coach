@@ -24,6 +24,7 @@ from api.models import (
     JobResultResponse,
     JobStatusResponse,
     MetricsResult,
+    ReferencePoseResult,
     SwingEventResult,
 )
 from api.services import job_store, storage
@@ -35,6 +36,7 @@ router = APIRouter(prefix="/api/v1")
 
 _ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
 _CHUNK_SIZE = 65536  # 64 KB
+_MAX_REFERENCE_MB = 50
 
 
 @router.post("/analyze", response_model=AnalyzeResponse, status_code=202)
@@ -230,4 +232,103 @@ async def get_job_result(job_id: str, current_user: dict = Depends(get_current_u
         input_video_url=input_url,
         fps=record["fps"],
         total_source_frames=record["total_source_frames"],
+    )
+
+
+@router.post("/reference", response_model=ReferencePoseResult)
+async def analyze_reference_video(
+    file: UploadFile = File(...),
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Accept a short reference video clip, run pose detection, and return the
+    averaged pose landmarks and key joint angles.  The result is used by the
+    frontend diff canvas to render a ghost reference skeleton.
+    """
+    import asyncio
+    import os
+
+    ext = os.path.splitext(file.filename or "")[1].lower()
+    if ext not in _ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=415,
+            detail=f"Unsupported file type '{ext}'. Allowed: {sorted(_ALLOWED_EXTENSIONS)}",
+        )
+
+    buf = await file.read()
+    if len(buf) > _MAX_REFERENCE_MB * 1024 * 1024:
+        raise HTTPException(
+            status_code=413,
+            detail=f"Reference video too large (max {_MAX_REFERENCE_MB} MB)",
+        )
+
+    loop = asyncio.get_event_loop()
+    result = await loop.run_in_executor(None, _process_reference, buf)
+    return result
+
+
+def _process_reference(video_bytes: bytes) -> ReferencePoseResult:
+    """Run in thread pool: pose-detect reference video, return averaged pose."""
+    import os
+    import tempfile
+
+    import cv2
+    import numpy as np
+
+    from pipeline.pose_detector import PoseDetector
+    from utils.math_helpers import angle_between_three_points
+
+    with tempfile.NamedTemporaryFile(suffix=".mp4", delete=False) as tmp:
+        tmp.write(video_bytes)
+        tmp_path = tmp.name
+    try:
+        cap = cv2.VideoCapture(tmp_path)
+        detector = PoseDetector()
+        all_lm: list = []   # list of 33-landmark frames
+        total = 0
+        detected = 0
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            total += 1
+            lr = detector.detect(frame, total - 1)
+            if lr is not None:
+                detected += 1
+                all_lm.append(lr.landmarks)
+        cap.release()
+        detector.close()
+    finally:
+        os.unlink(tmp_path)
+
+    if not all_lm:
+        return ReferencePoseResult(avg_landmarks=[None] * 33)
+
+    # Average each landmark across all detected frames
+    avg_lm = []
+    for idx in range(33):
+        pts = [lm[idx] for lm in all_lm if lm[idx] is not None]
+        if pts:
+            avg_lm.append([
+                float(np.mean([p[0] for p in pts])),
+                float(np.mean([p[1] for p in pts])),
+            ])
+        else:
+            avg_lm.append(None)
+
+    def safe_angle(a: int, b: int, c: int):
+        if avg_lm[a] and avg_lm[b] and avg_lm[c]:
+            return angle_between_three_points(avg_lm[a], avg_lm[b], avg_lm[c])
+        return None
+
+    return ReferencePoseResult(
+        avg_landmarks=avg_lm,
+        right_elbow=safe_angle(12, 14, 16),   # shoulder-elbow-wrist
+        left_elbow=safe_angle(11, 13, 15),
+        right_shoulder=safe_angle(14, 12, 24), # elbow-shoulder-hip
+        left_shoulder=safe_angle(13, 11, 23),
+        right_knee=safe_angle(24, 26, 28),     # hip-knee-ankle
+        left_knee=safe_angle(23, 25, 27),
+        frames_analyzed=total,
+        detection_rate=detected / max(total, 1),
     )
