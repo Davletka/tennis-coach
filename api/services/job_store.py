@@ -13,12 +13,12 @@ Schema
     "created_at":      ISO-8601 datetime str,
     "updated_at":      ISO-8601 datetime str,
     # Set only when completed:
-    "input_s3_key":    str,
-    "annotated_s3_key": str,
-    "fps":             float,
+    "input_s3_key":       str,
+    "frame_data":         list,   # per-frame landmarks + angles for canvas rendering
+    "fps":                float,
     "total_source_frames": int,
-    "metrics":         dict,
-    "coaching_report": dict,
+    "metrics":            dict,
+    "coaching_report":    dict,
     # Set only when failed:
     "error":           str,
 }
@@ -73,7 +73,7 @@ def update_job(job_id: str, **fields: Any) -> None:
     Merge *fields* into the existing job record and refresh TTL.
 
     Common fields: status, progress, message, input_s3_key,
-                   annotated_s3_key, fps, total_source_frames,
+                   frame_data, fps, total_source_frames,
                    metrics, coaching_report, error.
     """
     r = _redis()

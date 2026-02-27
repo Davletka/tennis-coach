@@ -1,13 +1,13 @@
 # CourtCoach
 
-AI-powered tennis coaching app that analyzes uploaded tennis videos using pose detection, produces an annotated video with skeleton overlay and joint angle labels, and delivers written coaching feedback via Claude.
+AI-powered tennis coaching app that analyzes uploaded tennis videos using pose detection, renders a live pose overlay on playback, and delivers written coaching feedback via Claude.
 
 ## Features
 
 - **Pose detection** — MediaPipe extracts 33 body landmarks per frame
 - **Joint angle analysis** — elbow, shoulder, and knee angles with mean/min/max/std stats
 - **Swing detection** — wrist speed peaks identify backswing/contact/follow-through events
-- **Annotated video** — skeleton overlay, angle labels, and wrist trail rendered on every frame
+- **Pose overlay** — skeleton, joint angle labels, and wrist trail drawn live on the video via canvas; togglable per-element
 - **AI coaching** — Claude Sonnet generates metrics-referenced feedback across 4 categories
 
 ## Setup
@@ -18,8 +18,6 @@ source .venv/bin/activate     # Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 cp .env.example .env          # fill in all required env vars (see .env.example)
 ```
-
-ffmpeg is recommended for browser-compatible H.264 output (the app falls back to mp4v if unavailable).
 
 On first run the app downloads the MediaPipe pose landmarker model (~25 MB) into `models/` and caches it for subsequent runs.
 
@@ -37,8 +35,8 @@ Open http://localhost:3000. The frontend requires the FastAPI backend running (s
 1. Sign in with Google (top-right) — required for history tracking and comparisons
 2. Drag-and-drop or browse to select a tennis video (MP4, MOV, or AVI) on the **Analyze** tab
 3. Click **Analyze Video** — progress is shown while the job runs
-4. View the annotated video and coaching tabs (Swing / Footwork / Stance / Tactics / Priorities)
-5. Download the annotated video or expand **Raw Metrics** for joint angle stats
+4. View the video with live pose overlay — toggle Skeleton / Angles / Trail controls; coaching tabs show Swing / Footwork / Stance / Tactics / Priorities
+5. Expand **Raw Metrics** for joint angle stats
 6. Switch to **History** to browse all past sessions (expandable coaching + metrics per session)
 7. Switch to **Compare** to select two sessions and get AI-generated delta coaching with metric changes
 8. Switch to **Progress** to see SVG sparkline charts for each metric across up to 30 sessions
@@ -151,7 +149,7 @@ All `/api/v1/*` routes require a `Authorization: Bearer <token>` header. Obtain 
 | `GET` | `/auth/me` | Required | Return authenticated user profile |
 | `POST` | `/api/v1/analyze` | Required | Upload video → returns `job_id` (202 Accepted); deduplicates identical uploads per user via SHA-256 |
 | `GET` | `/api/v1/jobs/{job_id}` | Required | Poll status + progress (0–100%) |
-| `GET` | `/api/v1/jobs/{job_id}/result` | Required | Fetch coaching report, metrics, and presigned video URLs |
+| `GET` | `/api/v1/jobs/{job_id}/result` | Required | Fetch coaching report, metrics, per-frame landmark data, and presigned input video URL |
 | `POST` | `/api/v1/jobs/{job_id}/retry` | Required | Re-queue a failed job from the furthest checkpoint (coaching-only or full re-run) |
 | `GET` | `/api/v1/users/{user_id}/history` | Required | Paginated session list with presigned URLs |
 | `GET` | `/api/v1/users/{user_id}/progress` | Required | Time-series of scalar metrics for charting |
