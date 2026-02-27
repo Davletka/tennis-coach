@@ -1235,6 +1235,7 @@ function SessionCard({
                     src={session.input_video_url}
                     className="w-full rounded-lg bg-black"
                     preload="metadata"
+                    muted
                     onLoadedMetadata={(e) => setDuration((e.target as HTMLVideoElement).duration)}
                     onTimeUpdate={(e) => {
                       const t = (e.target as HTMLVideoElement).currentTime;
@@ -1251,6 +1252,7 @@ function SessionCard({
                     src={session.annotated_video_url}
                     className="w-full rounded-lg bg-black"
                     preload="metadata"
+                    muted
                   />
                 </div>
               </div>
