@@ -16,19 +16,43 @@ from config import MIN_DETECTION_RATE
 SYSTEM_PROMPT = """You are an expert tennis coach with 20+ years of experience coaching players at all levels.
 You analyze video-based biomechanical data and deliver precise, actionable coaching feedback.
 
+TENNIS BIOMECHANICS REFERENCE RANGES:
+- Elbow angle at contact (forehand groundstroke): 120–160° (some flexion for control)
+- Elbow angle at contact (serve / overhead): 160–180° (near-full extension at impact)
+- Knee bend during groundstroke preparation: 120–145° (athletic ready position)
+- Torso rotation change during a groundstroke: 30–60° (measures hip-to-shoulder kinematic chain; below 20° = insufficient rotation)
+- Stance width (normalized to hip width): 1.2–1.8 for groundstrokes (below 1.0 = too narrow; above 2.2 = too wide)
+- Shoulder angle (elbow–shoulder–hip): 70–100° at contact for most groundstrokes
+- Wrist height relative to hips at contact: negative value = wrist above hips (good for flat/topspin); strongly positive = contact point too low
+
 RULES:
 - Always reference specific numbers from the provided metrics.
-- Be direct and avoid generic advice like "bend your knees more" without a target angle.
+- Be direct and avoid generic advice without a target angle or metric value.
 - Every suggestion must be tied to a measurable metric.
+- Give BALANCED analysis across all four areas: swing mechanics, footwork, stance/posture, and tactics.
+- Do NOT fixate on wrist speed — evaluate the full kinematic chain: lower body → hips → core → shoulder → elbow.
+- If a metric is within the healthy reference range, acknowledge it positively rather than manufacturing a problem.
 """
 
 PER_SWING_SYSTEM_PROMPT = """You are an expert tennis coach with 20+ years of experience coaching players at all levels.
 You analyze video-based biomechanical data swing by swing and deliver precise, actionable coaching feedback.
 
+TENNIS BIOMECHANICS REFERENCE RANGES:
+- Elbow angle at contact (forehand groundstroke): 120–160° | (serve / overhead): 160–180°
+- Knee bend during preparation: 120–145° (athletic stance)
+- Torso rotation change during swing: 30–60° — this is the kinematic chain indicator; below 20° means the hips and core are not driving the shot
+- Stance width (normalized to hip width): 1.2–1.8 for groundstrokes
+- Shoulder angle (elbow–shoulder–hip): 70–100° at contact
+- Wrist height at contact: negative value = wrist above hips (desirable); strongly positive = contact point too low
+
 RULES:
 - Analyze each swing individually — do NOT repeat identical advice for every swing.
-- Reference specific numbers from the provided metrics for that swing.
+- Prioritize "At Contact Point" metrics over window averages for mechanics feedback.
+- Reference specific numbers from the metrics provided.
 - Every suggestion must be tied to a measurable metric from that swing's window.
+- Give BALANCED analysis covering the full kinematic chain: lower body → hips → core → shoulder → elbow.
+- Do NOT focus excessively on wrist speed — it is only a proxy for racket head speed, not a technique target.
+- If a metric is within the healthy reference range, acknowledge it rather than inventing issues.
 """
 
 # ---------------------------------------------------------------------------
@@ -211,10 +235,39 @@ def _build_swing_prompt(psm, fps: float, activity_cfg=None) -> str:
     t = psm.peak_frame / max(fps, 1.0)
     event_singular = activity_cfg.event_singular if activity_cfg else "swing"
     event_metric_label = activity_cfg.event_metric_label if activity_cfg else "Peak wrist speed"
-    return "\n".join([
+
+    def _contact_height_label(v: Optional[float]) -> str:
+        if v is None:
+            return "?"
+        if v < -0.15:
+            return f"{v:.2f} (above shoulders — very high contact)"
+        if v < 0:
+            return f"{v:.2f} (above hips — ideal zone)"
+        if v < 0.15:
+            return f"{v:.2f} (at hip level)"
+        return f"{v:.2f} (below hips — contact point too low)"
+
+    lines = [
         f"{event_singular.capitalize()} {psm.swing_index + 1} (frame {psm.peak_frame}, t={t:.1f}s)",
         f"Window: frames {psm.window_start_frame}–{psm.window_end_frame}",
         f"{event_metric_label}: {psm.peak_wrist_speed:.4f}",
+        "",
+        "## At Contact Point (peak ± 2 frames) — use these for mechanics feedback",
+        f"Right elbow at contact:    {_fmt(psm.right_elbow_at_contact)}°",
+        f"Left elbow at contact:     {_fmt(psm.left_elbow_at_contact)}°",
+        f"Right shoulder at contact: {_fmt(psm.right_shoulder_at_contact)}°",
+        f"Left shoulder at contact:  {_fmt(psm.left_shoulder_at_contact)}°",
+        f"Right knee at contact:     {_fmt(psm.right_knee_at_contact)}°",
+        f"Left knee at contact:      {_fmt(psm.left_knee_at_contact)}°",
+        f"Torso rotation at contact: {_fmt(psm.torso_rotation_at_contact)}°",
+        f"Wrist height (rel. hips):  {_contact_height_label(psm.right_wrist_y_at_contact)}",
+        "",
+        "## Swing Dynamics",
+        f"Torso rotation change (prep→follow-through): {_fmt(psm.torso_rotation_delta)}° [target: 30–60° for groundstrokes]",
+        f"Stance width (normalized to hip width): {_fmt(psm.stance_width_mean)} [target: 1.2–1.8]",
+        f"CoM lateral range: {_fmt(psm.com_x_range)}",
+        "",
+        "## Full-Window Averages (context only)",
         f"Right elbow:    mean={_fmt(psm.right_elbow.mean)}° min={_fmt(psm.right_elbow.min)}° max={_fmt(psm.right_elbow.max)}°",
         f"Left elbow:     mean={_fmt(psm.left_elbow.mean)}° min={_fmt(psm.left_elbow.min)}° max={_fmt(psm.left_elbow.max)}°",
         f"Right shoulder: mean={_fmt(psm.right_shoulder.mean)}° min={_fmt(psm.right_shoulder.min)}° max={_fmt(psm.right_shoulder.max)}°",
@@ -222,9 +275,8 @@ def _build_swing_prompt(psm, fps: float, activity_cfg=None) -> str:
         f"Right knee:     mean={_fmt(psm.right_knee.mean)}° min={_fmt(psm.right_knee.min)}° max={_fmt(psm.right_knee.max)}°",
         f"Left knee:      mean={_fmt(psm.left_knee.mean)}° min={_fmt(psm.left_knee.min)}° max={_fmt(psm.left_knee.max)}°",
         f"Torso rotation: mean={_fmt(psm.torso_rotation_mean)}° max={_fmt(psm.torso_rotation_max)}°",
-        f"Stance width (normalized): {_fmt(psm.stance_width_mean)}",
-        f"CoM X range: {_fmt(psm.com_x_range)}",
-    ])
+    ]
+    return "\n".join(lines)
 
 
 # ---------------------------------------------------------------------------
