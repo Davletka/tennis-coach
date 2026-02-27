@@ -950,10 +950,12 @@ function ResultView({
   result,
   token,
   onReset,
+  onRetry,
 }: {
   result: JobResultResponse;
   token: string | null;
   onReset: () => void;
+  onRetry: () => void;
 }) {
   const lowDetection = result.metrics.detection_rate < 0.4;
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -1188,7 +1190,7 @@ function ResultView({
       )}
 
       {/* Hidden video element drives both canvases */}
-      <video ref={videoRef} src={result.input_video_url} className="hidden" preload="auto" />
+      <video ref={videoRef} src={result.input_video_url} className="hidden" preload="auto" muted />
 
       {/* Side-by-side: zoomed video | diff canvas */}
       <div className="grid grid-cols-2 gap-3">
@@ -1382,12 +1384,22 @@ function ResultView({
 
       <MetricsTable metrics={result.metrics} />
 
-      <button
-        onClick={onReset}
-        className="w-full rounded-lg border border-gray-600 px-4 py-2.5 text-sm font-medium text-gray-300 transition-colors hover:border-gray-400 hover:text-white"
-      >
-        Analyze another video
-      </button>
+      <div className="flex gap-3">
+        {result.coaching_report.swing_mechanics.startsWith("❌") && (
+          <button
+            onClick={onRetry}
+            className="flex-1 rounded-lg bg-yellow-700 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-yellow-600"
+          >
+            Re-analyze Coaching
+          </button>
+        )}
+        <button
+          onClick={onReset}
+          className="flex-1 rounded-lg border border-gray-600 px-4 py-2.5 text-sm font-medium text-gray-300 transition-colors hover:border-gray-400 hover:text-white"
+        >
+          Analyze another video
+        </button>
+      </div>
     </div>
   );
 }
@@ -2417,7 +2429,12 @@ export default function Home() {
       {activeTab === "analyze" && (
         <>
           {state.phase === "completed" ? (
-            <ResultView result={state.result} token={token} onReset={reset} />
+            <ResultView
+              result={state.result}
+              token={token}
+              onReset={reset}
+              onRetry={() => retry(state.result.job_id)}
+            />
           ) : state.phase === "failed" ? (
             <div className="space-y-4">
               <div className="rounded-lg border border-red-700 bg-red-950/40 px-4 py-3 text-sm text-red-300">
@@ -2451,12 +2468,25 @@ export default function Home() {
                 disabled={isActive}
               />
               {(state.phase === "uploading" || state.phase === "polling") && (
-                <ProgressBar
-                  progress={state.progress}
-                  message={
-                    state.phase === "uploading" ? "Uploading…" : state.message
-                  }
-                />
+                <div className="space-y-2">
+                  <ProgressBar
+                    progress={state.progress}
+                    message={
+                      state.phase === "uploading" ? "Uploading…" : state.message
+                    }
+                  />
+                  {state.phase === "polling" && (
+                    <div className="flex justify-end">
+                      <button
+                        onClick={() => retry(state.jobId)}
+                        className="text-xs text-gray-500 hover:text-yellow-400 transition-colors"
+                        title="Cancel the current run and restart from the last checkpoint"
+                      >
+                        Stuck? Cancel &amp; Retry
+                      </button>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}

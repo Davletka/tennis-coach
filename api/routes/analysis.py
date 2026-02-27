@@ -106,24 +106,28 @@ async def retry_analysis(
     current_user: dict = Depends(get_current_user),
 ):
     """
-    Re-queue a failed job from the furthest completed checkpoint.
+    Re-queue a failed or stuck-running job from the furthest completed checkpoint.
 
     - If ``frame_data`` AND ``metrics`` are both set → skip to coaching step
     - Otherwise → re-run from the beginning (video is already on S3)
+
+    Accepts jobs in ``failed`` or ``running`` state so users can cancel a
+    frozen pipeline and restart from the last good checkpoint.
     """
     record = job_store.get_job(job_id)
     if record is None:
         raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
     if record.get("user_id") != current_user["sub"]:
         raise HTTPException(status_code=403, detail="Access denied.")
-    if record.get("status") != "failed":
+    if record.get("status") not in ("failed", "running", "completed"):
         raise HTTPException(
             status_code=409,
             detail=f"Job '{job_id}' cannot be retried: status is '{record.get('status')}'.",
         )
 
-    # Determine the best resume point
-    if record.get("frame_data") and record.get("metrics"):
+    # Completed jobs always resume from coaching (video + metrics already done).
+    # Failed/running jobs resume from the furthest good checkpoint.
+    if record.get("status") == "completed" or (record.get("frame_data") and record.get("metrics")):
         resume_from = "coaching"
     else:
         resume_from = "start"
