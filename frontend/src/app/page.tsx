@@ -487,6 +487,29 @@ const COACHING_TABS = [
 
 type CoachingKey = (typeof COACHING_TABS)[number]["key"];
 
+// If old fallback stored raw JSON in swing_mechanics, re-parse it transparently.
+function normalizeCoachingReport(report: {
+  swing_mechanics: string;
+  footwork_movement: string;
+  stance_posture: string;
+  shot_selection_tactics: string;
+  top_3_priorities: string[];
+}) {
+  const raw = report.swing_mechanics ?? "";
+  if (!raw.trimStart().startsWith("{")) return report;
+  try {
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}") + 1;
+    const parsed = JSON.parse(raw.slice(start, end));
+    if (parsed && typeof parsed === "object" && "swing_mechanics" in parsed) {
+      return { ...report, ...parsed };
+    }
+  } catch {
+    // not valid JSON — leave as-is
+  }
+  return report;
+}
+
 function CoachingPanel({
   report,
 }: {
@@ -499,6 +522,7 @@ function CoachingPanel({
   };
 }) {
   const [activeTab, setActiveTab] = useState<CoachingKey>("swing_mechanics");
+  report = normalizeCoachingReport(report);
 
   return (
     <div className="rounded-xl bg-gray-900 border border-gray-700">

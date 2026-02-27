@@ -151,13 +151,11 @@ def _parse_response(raw_text: str) -> CoachingReport:
     """Parse Claude's JSON response into a CoachingReport."""
     report = CoachingReport(raw_response=raw_text)
 
-    # Extract JSON block if wrapped in markdown fences
-    text = raw_text
-    if "```" in text:
-        start = text.find("{")
-        end = text.rfind("}") + 1
-        if start != -1 and end > start:
-            text = text[start:end]
+    # Always extract the outermost {...} block (handles both plain JSON and
+    # markdown-fenced responses like ```json\n{...}\n```).
+    start = raw_text.find("{")
+    end = raw_text.rfind("}") + 1
+    text = raw_text[start:end] if start != -1 and end > start else raw_text
 
     try:
         data = json.loads(text)
@@ -168,8 +166,7 @@ def _parse_response(raw_text: str) -> CoachingReport:
         report.top_3_priorities = data.get("top_3_priorities", [])
         report.target_angles = data.get("target_angles", {}) or {}
     except (json.JSONDecodeError, ValueError):
-        # Fallback: dump raw text into swing_mechanics
-        report.swing_mechanics = raw_text
+        report.swing_mechanics = "⚠️ Coaching analysis could not be parsed. Please re-analyze the video."
         report.top_3_priorities = []
 
     return report
