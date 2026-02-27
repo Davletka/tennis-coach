@@ -144,8 +144,16 @@ def run_analysis(
             per_swing_raw = job.get("per_swing_metrics", [])
             if per_swing_raw:
                 per_swing_list = [_per_swing_from_dict(d) for d in per_swing_raw]
+                n_swings = len(per_swing_list)
+
+                def _swing_cb_retry(done: int, total: int) -> None:
+                    pct = 75 + int((done / total) * 13)
+                    job_store.update_job(job_id, status="running", progress=pct,
+                                        message=f"Generating per-swing analysis ({done}/{total} swings)")
+
                 swing_coaching_list = get_per_swing_coaching(
-                    per_swing_list, fps, api_key=settings.anthropic_api_key
+                    per_swing_list, fps, api_key=settings.anthropic_api_key,
+                    on_swing_done=_swing_cb_retry,
                 )
                 per_swing_coaching_dicts = [
                     {
@@ -349,10 +357,17 @@ def run_analysis(
             # ----------------------------------------------------------------
             # 6. Per-swing Claude coaching
             # ----------------------------------------------------------------
-            _progress(75, "Generating per-swing analysis")
+            _progress(75, "Generating per-swing analysis (0/{} swings)".format(len(per_swing_list)))
             from pipeline.coach import get_per_swing_coaching
+
+            def _swing_cb(done: int, total: int) -> None:
+                pct = 75 + int((done / total) * 13)
+                job_store.update_job(job_id, status="running", progress=pct,
+                                     message=f"Generating per-swing analysis ({done}/{total} swings)")
+
             swing_coaching_list = get_per_swing_coaching(
-                per_swing_list, fps, api_key=settings.anthropic_api_key
+                per_swing_list, fps, api_key=settings.anthropic_api_key,
+                on_swing_done=_swing_cb,
             )
             per_swing_coaching_dicts = [
                 {

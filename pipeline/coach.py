@@ -168,104 +168,93 @@ def get_coaching_feedback(
     return _parse_response(raw_text)
 
 
-def get_per_swing_coaching(
-    per_swing_metrics: list,
-    fps: float,
-    api_key: str,
-    model: str = "claude-sonnet-4-6",
-) -> List[SwingCoaching]:
-    """
-    Batch-call Claude for per-swing coaching analysis.
-    All swings sent in a single API call; returns one SwingCoaching per swing.
-    """
-    if not per_swing_metrics:
-        return []
+def _fmt(v: Optional[float]) -> str:
+    return f"{v:.1f}" if v is not None else "?"
 
-    def _fmt(v: Optional[float]) -> str:
-        return f"{v:.1f}" if v is not None else "?"
 
-    swing_blocks = []
-    for psm in per_swing_metrics:
-        t = psm.peak_frame / max(fps, 1.0)
-        block = "\n".join([
-            f"### Swing {psm.swing_index + 1} (frame {psm.peak_frame}, t={t:.1f}s)",
-            f"Window: frames {psm.window_start_frame}–{psm.window_end_frame}",
-            f"Peak wrist speed: {psm.peak_wrist_speed:.4f}",
-            f"Right elbow:    mean={_fmt(psm.right_elbow.mean)}° min={_fmt(psm.right_elbow.min)}° max={_fmt(psm.right_elbow.max)}°",
-            f"Left elbow:     mean={_fmt(psm.left_elbow.mean)}° min={_fmt(psm.left_elbow.min)}° max={_fmt(psm.left_elbow.max)}°",
-            f"Right shoulder: mean={_fmt(psm.right_shoulder.mean)}° min={_fmt(psm.right_shoulder.min)}° max={_fmt(psm.right_shoulder.max)}°",
-            f"Left shoulder:  mean={_fmt(psm.left_shoulder.mean)}° min={_fmt(psm.left_shoulder.min)}° max={_fmt(psm.left_shoulder.max)}°",
-            f"Right knee:     mean={_fmt(psm.right_knee.mean)}° min={_fmt(psm.right_knee.min)}° max={_fmt(psm.right_knee.max)}°",
-            f"Left knee:      mean={_fmt(psm.left_knee.mean)}° min={_fmt(psm.left_knee.min)}° max={_fmt(psm.left_knee.max)}°",
-            f"Torso rotation: mean={_fmt(psm.torso_rotation_mean)}° max={_fmt(psm.torso_rotation_max)}°",
-            f"Stance width (normalized): {_fmt(psm.stance_width_mean)}",
-            f"CoM X range: {_fmt(psm.com_x_range)}",
-        ])
-        swing_blocks.append(block)
-
-    user_prompt = "\n\n".join([
-        "Analyze each swing individually. Do NOT repeat advice that applies identically to all swings.",
-        *swing_blocks,
-        """Respond ONLY with a JSON array, one object per swing, in this exact schema:
-[
-  {
-    "swing_index": 0,
-    "quick_note": "one-sentence summary of this swing",
-    "swing_mechanics": "...",
-    "footwork_movement": "...",
-    "stance_posture": "...",
-    "shot_selection_tactics": "...",
-    "top_3_priorities": ["...", "...", "..."]
-  }
-]""",
+def _build_swing_prompt(psm, fps: float) -> str:
+    t = psm.peak_frame / max(fps, 1.0)
+    return "\n".join([
+        f"Swing {psm.swing_index + 1} (frame {psm.peak_frame}, t={t:.1f}s)",
+        f"Window: frames {psm.window_start_frame}–{psm.window_end_frame}",
+        f"Peak wrist speed: {psm.peak_wrist_speed:.4f}",
+        f"Right elbow:    mean={_fmt(psm.right_elbow.mean)}° min={_fmt(psm.right_elbow.min)}° max={_fmt(psm.right_elbow.max)}°",
+        f"Left elbow:     mean={_fmt(psm.left_elbow.mean)}° min={_fmt(psm.left_elbow.min)}° max={_fmt(psm.left_elbow.max)}°",
+        f"Right shoulder: mean={_fmt(psm.right_shoulder.mean)}° min={_fmt(psm.right_shoulder.min)}° max={_fmt(psm.right_shoulder.max)}°",
+        f"Left shoulder:  mean={_fmt(psm.left_shoulder.mean)}° min={_fmt(psm.left_shoulder.min)}° max={_fmt(psm.left_shoulder.max)}°",
+        f"Right knee:     mean={_fmt(psm.right_knee.mean)}° min={_fmt(psm.right_knee.min)}° max={_fmt(psm.right_knee.max)}°",
+        f"Left knee:      mean={_fmt(psm.left_knee.mean)}° min={_fmt(psm.left_knee.min)}° max={_fmt(psm.left_knee.max)}°",
+        f"Torso rotation: mean={_fmt(psm.torso_rotation_mean)}° max={_fmt(psm.torso_rotation_max)}°",
+        f"Stance width (normalized): {_fmt(psm.stance_width_mean)}",
+        f"CoM X range: {_fmt(psm.com_x_range)}",
+        "",
+        'Respond ONLY with a single JSON object: {"quick_note": "...", "swing_mechanics": "...",'
+        ' "footwork_movement": "...", "stance_posture": "...", "shot_selection_tactics": "...",'
+        ' "top_3_priorities": ["...", "...", "..."]}',
     ])
 
+
+def _get_single_swing_coaching(psm, fps: float, client, model: str) -> SwingCoaching:
+    user_prompt = _build_swing_prompt(psm, fps)
     try:
-        client = anthropic.Anthropic(api_key=api_key)
         msg = client.messages.create(
             model=model,
-            max_tokens=4096,
+            max_tokens=1024,
             system=PER_SWING_SYSTEM_PROMPT,
             messages=[{"role": "user", "content": user_prompt}],
         )
-        return _parse_per_swing_response(msg.content[0].text.strip(), len(per_swing_metrics))
+        raw = msg.content[0].text.strip()
     except (
         anthropic.AuthenticationError,
         anthropic.RateLimitError,
         anthropic.APIConnectionError,
         anthropic.APIStatusError,
     ) as exc:
-        note = f"[Coach unavailable: {exc}]"
-        return [SwingCoaching(swing_index=i, quick_note=note) for i in range(len(per_swing_metrics))]
+        return SwingCoaching(swing_index=psm.swing_index, quick_note=f"[Coach unavailable: {exc}]")
 
-
-def _parse_per_swing_response(raw: str, swing_count: int) -> List[SwingCoaching]:
+    # Parse single JSON object
     text = raw
     if "```" in text:
-        s = text.find("[")
-        e = text.rfind("]") + 1
+        s = text.find("{"); e = text.rfind("}") + 1
         if s != -1 and e > s:
             text = text[s:e]
     try:
         data = json.loads(text)
-        assert isinstance(data, list)
-        return [
-            SwingCoaching(
-                swing_index=item.get("swing_index", i),
-                quick_note=item.get("quick_note", ""),
-                swing_mechanics=item.get("swing_mechanics", ""),
-                footwork_movement=item.get("footwork_movement", ""),
-                stance_posture=item.get("stance_posture", ""),
-                shot_selection_tactics=item.get("shot_selection_tactics", ""),
-                top_3_priorities=item.get("top_3_priorities", []),
-            )
-            for i, item in enumerate(data)
-        ]
-    except (json.JSONDecodeError, AssertionError):
-        return [
-            SwingCoaching(swing_index=i, quick_note="[Parse error — raw response unavailable]")
-            for i in range(swing_count)
-        ]
+        return SwingCoaching(
+            swing_index=psm.swing_index,
+            quick_note=data.get("quick_note", ""),
+            swing_mechanics=data.get("swing_mechanics", ""),
+            footwork_movement=data.get("footwork_movement", ""),
+            stance_posture=data.get("stance_posture", ""),
+            shot_selection_tactics=data.get("shot_selection_tactics", ""),
+            top_3_priorities=data.get("top_3_priorities", []),
+        )
+    except (json.JSONDecodeError, ValueError):
+        return SwingCoaching(swing_index=psm.swing_index, quick_note="[Parse error]")
+
+
+def get_per_swing_coaching(
+    per_swing_metrics: list,
+    fps: float,
+    api_key: str,
+    model: str = "claude-sonnet-4-6",
+    on_swing_done: Optional[object] = None,
+) -> List[SwingCoaching]:
+    """
+    Call Claude once per swing so progress can be reported after each one.
+    on_swing_done(done: int, total: int) is called after each swing completes.
+    """
+    if not per_swing_metrics:
+        return []
+
+    client = anthropic.Anthropic(api_key=api_key)
+    total = len(per_swing_metrics)
+    results = []
+    for psm in per_swing_metrics:
+        results.append(_get_single_swing_coaching(psm, fps, client, model))
+        if on_swing_done is not None:
+            on_swing_done(len(results), total)
+    return results
 
 
 def _parse_response(raw_text: str) -> CoachingReport:
