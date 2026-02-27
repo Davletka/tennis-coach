@@ -240,6 +240,66 @@ const INSIDE_OUT_SVG = shotSvg(
    <text x="210" y="108" font-family="system-ui,sans-serif" font-size="10" fill="${C.accent}" text-anchor="middle">diagonal to opponent's BH</text>`,
 );
 
+// Body-movement SVGs — full stick-figure diagrams showing wrist, shoulder & body positions
+
+const HIGH_BOUNCE_SVG = `<svg viewBox="0 0 400 290" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="290" fill="${C.bg}" rx="12"/>
+  <!-- Court surface -->
+  <rect x="20" y="232" width="360" height="8" fill="#6ee7b7" stroke="${C.outline}" stroke-width="1" opacity="0.7"/>
+  <line x1="20" y1="240" x2="380" y2="240" stroke="${C.outline}" stroke-width="2"/>
+  <!-- Head -->
+  <circle cx="175" cy="62" r="15" fill="#fde8d8" stroke="${C.outline}" stroke-width="2"/>
+  <!-- Torso -->
+  <line x1="175" y1="77" x2="178" y2="152" stroke="${C.outline}" stroke-width="5" stroke-linecap="round"/>
+  <!-- Shoulder line (rotated — right shoulder back for contact) -->
+  <line x1="155" y1="97" x2="208" y2="90" stroke="${C.outline}" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Left shoulder dot -->
+  <circle cx="155" cy="97" r="5" fill="${C.muted}" opacity="0.6"/>
+  <!-- Right shoulder dot -->
+  <circle cx="208" cy="90" r="5" fill="${C.muted}" opacity="0.6"/>
+  <!-- Hips -->
+  <line x1="164" y1="152" x2="196" y2="152" stroke="${C.outline}" stroke-width="4" stroke-linecap="round"/>
+  <!-- Left leg -->
+  <line x1="166" y1="152" x2="150" y2="198" stroke="${C.outline}" stroke-width="4" stroke-linecap="round"/>
+  <line x1="150" y1="198" x2="138" y2="240" stroke="${C.outline}" stroke-width="4" stroke-linecap="round"/>
+  <!-- Right leg (front, planted) -->
+  <line x1="193" y1="152" x2="215" y2="193" stroke="${C.outline}" stroke-width="4" stroke-linecap="round"/>
+  <line x1="215" y1="193" x2="228" y2="240" stroke="${C.outline}" stroke-width="4" stroke-linecap="round"/>
+  <!-- Left arm (pulling back to open shoulders) -->
+  <line x1="155" y1="97" x2="132" y2="118" stroke="${C.outline}" stroke-width="3" stroke-linecap="round"/>
+  <line x1="132" y1="118" x2="115" y2="112" stroke="${C.outline}" stroke-width="3" stroke-linecap="round"/>
+  <!-- Right upper arm -->
+  <line x1="208" y1="90" x2="252" y2="96" stroke="${C.outline}" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Right forearm extended upward to shoulder-height contact -->
+  <line x1="252" y1="96" x2="284" y2="78" stroke="${C.outline}" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Wrist highlight -->
+  <circle cx="284" cy="76" r="8" fill="${C.accent}" stroke="${C.white}" stroke-width="2.5"/>
+  <text x="296" y="70" font-family="system-ui,sans-serif" font-size="9" fill="${C.accent}" font-weight="700">wrist</text>
+  <!-- Racket handle -->
+  <line x1="284" y1="76" x2="306" y2="57" stroke="#64748b" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Racket head (strings) -->
+  <ellipse cx="318" cy="46" rx="14" ry="20" fill="none" stroke="${C.outline}" stroke-width="2" transform="rotate(-25 318 46)"/>
+  <line x1="308" y1="34" x2="328" y2="58" stroke="${C.outline}" stroke-width="1" opacity="0.35"/>
+  <line x1="302" y1="46" x2="334" y2="46" stroke="${C.outline}" stroke-width="1" opacity="0.35"/>
+  <!-- Ball at shoulder height -->
+  <circle cx="298" cy="68" r="7" fill="${C.accent}" opacity="0.75"/>
+  <!-- Shoulder rotation annotation -->
+  <path d="M 158,90 A 50,50 0 0,1 208,88" fill="none" stroke="${C.green}" stroke-width="2" stroke-dasharray="4,3"/>
+  <text x="182" y="80" font-family="system-ui,sans-serif" font-size="9" fill="${C.green}" text-anchor="middle" font-weight="600">shoulder rotation</text>
+  <!-- Swing path arrow (low-to-high) -->
+  <defs><marker id="arr-hb" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="${C.green}"/></marker></defs>
+  <path d="M 258,162 Q 272,122 282,82" fill="none" stroke="${C.green}" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.85" marker-end="url(#arr-hb)"/>
+  <text x="238" y="145" font-family="system-ui,sans-serif" font-size="9" fill="${C.green}">low-to-high</text>
+  <!-- Height indicator -->
+  <line x1="348" y1="76" x2="348" y2="240" stroke="${C.blue}" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.6"/>
+  <line x1="342" y1="76" x2="354" y2="76" stroke="${C.blue}" stroke-width="1.5"/>
+  <text x="353" y="80" font-family="system-ui,sans-serif" font-size="9" fill="${C.blue}">shoulder</text>
+  <text x="356" y="91" font-family="system-ui,sans-serif" font-size="9" fill="${C.blue}">height</text>
+  <!-- Labels -->
+  <text x="200" y="264" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="${C.text}" text-anchor="middle">High-Bounce Contact — Open Stance</text>
+  <text x="200" y="281" font-family="system-ui,sans-serif" font-size="10" fill="${C.muted}" text-anchor="middle">Shoulder turns, wrist accelerates through ball at shoulder height</text>
+</svg>`;
+
 const SLICE_SVG = shotSvg(
   "Slice Forehand — Backspin, stays low",
   `<path d="M 30,148 Q 200,120 370,155" fill="none" stroke="#06b6d4" stroke-width="2.5" stroke-dasharray="6,3"/>
@@ -453,6 +513,7 @@ const TENNIS: LearnActivity = {
                 description: "Exploit the high kick to push opponents off the court.",
                 difficulty: "advanced",
                 content: [
+                  { type: "svg", svg: HIGH_BOUNCE_SVG, caption: "Open stance with full shoulder rotation — meet the ball at shoulder height with an aggressive upswing." },
                   { type: "section-header", text: "Targeting the Shoulder" },
                   { type: "text", text: "A heavy topspin ball directed at the opponent's backhand shoulder forces them to hit an awkward, defensive shot. When the ball kicks above shoulder height, most players can't generate power — turning a neutral rally into an attacking opportunity for you." },
                   { type: "key-points", points: [
