@@ -130,6 +130,8 @@ export interface SessionSummary {
   total_source_frames: number;
   frames_analyzed: number;
   detection_rate: number;
+  annotated_video_url: string;
+  input_video_url: string;
   metrics: MetricsResult;
   coaching: CoachingReportResult;
 }
