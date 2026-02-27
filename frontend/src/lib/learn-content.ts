@@ -300,6 +300,71 @@ const HIGH_BOUNCE_SVG = `<svg viewBox="0 0 400 290" xmlns="http://www.w3.org/200
   <text x="200" y="281" font-family="system-ui,sans-serif" font-size="10" fill="${C.muted}" text-anchor="middle">Shoulder turns, wrist accelerates through ball at shoulder height</text>
 </svg>`;
 
+const DROP_SHOT_SVG = `<svg viewBox="0 0 400 290" xmlns="http://www.w3.org/2000/svg">
+  <rect width="400" height="290" fill="${C.bg}" rx="12"/>
+  <!-- Court surface -->
+  <rect x="20" y="232" width="360" height="8" fill="#6ee7b7" stroke="${C.outline}" stroke-width="1" opacity="0.7"/>
+  <line x1="20" y1="240" x2="380" y2="240" stroke="${C.outline}" stroke-width="2"/>
+  <!-- Net -->
+  <rect x="190" y="202" width="8" height="30" fill="${C.outline}" rx="2" opacity="0.6"/>
+  <line x1="188" y1="202" x2="200" y2="202" stroke="${C.outline}" stroke-width="2.5"/>
+  <text x="194" y="198" font-family="system-ui,sans-serif" font-size="8" fill="${C.muted}" text-anchor="middle">net</text>
+  <!-- Head -->
+  <circle cx="165" cy="62" r="15" fill="#fde8d8" stroke="${C.outline}" stroke-width="2"/>
+  <!-- Torso (upright — drop shot needs less body lean) -->
+  <line x1="165" y1="77" x2="167" y2="150" stroke="${C.outline}" stroke-width="5" stroke-linecap="round"/>
+  <!-- Shoulder line (modest rotation — disguise prep looks normal) -->
+  <line x1="148" y1="97" x2="193" y2="92" stroke="${C.outline}" stroke-width="3.5" stroke-linecap="round"/>
+  <circle cx="148" cy="97" r="5" fill="${C.muted}" opacity="0.6"/>
+  <circle cx="193" cy="92" r="5" fill="${C.muted}" opacity="0.6"/>
+  <!-- Hips -->
+  <line x1="157" y1="150" x2="188" y2="150" stroke="${C.outline}" stroke-width="4" stroke-linecap="round"/>
+  <!-- Left leg -->
+  <line x1="160" y1="150" x2="145" y2="197" stroke="${C.outline}" stroke-width="4" stroke-linecap="round"/>
+  <line x1="145" y1="197" x2="133" y2="240" stroke="${C.outline}" stroke-width="4" stroke-linecap="round"/>
+  <!-- Right leg -->
+  <line x1="185" y1="150" x2="202" y2="192" stroke="${C.outline}" stroke-width="4" stroke-linecap="round"/>
+  <line x1="202" y1="192" x2="212" y2="240" stroke="${C.outline}" stroke-width="4" stroke-linecap="round"/>
+  <!-- Left arm (forward, relaxed guidance) -->
+  <line x1="148" y1="97" x2="126" y2="114" stroke="${C.outline}" stroke-width="3" stroke-linecap="round"/>
+  <line x1="126" y1="114" x2="110" y2="110" stroke="${C.outline}" stroke-width="3" stroke-linecap="round"/>
+  <!-- Right upper arm -->
+  <line x1="193" y1="92" x2="234" y2="100" stroke="${C.outline}" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Right forearm — contact at waist height, arm relaxed (not locked out) -->
+  <line x1="234" y1="100" x2="262" y2="126" stroke="${C.outline}" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Wrist (soft wrist — highlighted) -->
+  <circle cx="262" cy="126" r="8" fill="${C.accent}" stroke="${C.white}" stroke-width="2.5"/>
+  <text x="274" y="120" font-family="system-ui,sans-serif" font-size="9" fill="${C.accent}" font-weight="700">soft wrist</text>
+  <!-- Racket handle -->
+  <line x1="262" y1="126" x2="286" y2="150" stroke="#64748b" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Racket head — open face (more horizontal, tilted skyward) -->
+  <ellipse cx="300" cy="164" rx="17" ry="11" fill="none" stroke="${C.outline}" stroke-width="2" transform="rotate(15 300 164)"/>
+  <line x1="285" y1="160" x2="315" y2="168" stroke="${C.outline}" stroke-width="1" opacity="0.35"/>
+  <line x1="300" y1="153" x2="300" y2="175" stroke="${C.outline}" stroke-width="1" opacity="0.35"/>
+  <!-- Open face annotation -->
+  <text x="320" y="152" font-family="system-ui,sans-serif" font-size="9" fill="${C.blue}" font-weight="600">open</text>
+  <text x="320" y="164" font-family="system-ui,sans-serif" font-size="9" fill="${C.blue}" font-weight="600">face</text>
+  <defs>
+    <marker id="arr-ds-face" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="${C.blue}"/></marker>
+    <marker id="arr-ds-ft" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="${C.muted}"/></marker>
+  </defs>
+  <line x1="318" y1="157" x2="308" y2="163" stroke="${C.blue}" stroke-width="1.5" marker-end="url(#arr-ds-face)"/>
+  <!-- Ball at contact -->
+  <circle cx="290" cy="150" r="7" fill="${C.accent}" opacity="0.72"/>
+  <!-- Short follow-through (decelerate at contact) -->
+  <path d="M 265,130 Q 272,148 278,168" fill="none" stroke="${C.muted}" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.75" marker-end="url(#arr-ds-ft)"/>
+  <text x="228" y="155" font-family="system-ui,sans-serif" font-size="9" fill="${C.muted}">short</text>
+  <text x="220" y="166" font-family="system-ui,sans-serif" font-size="9" fill="${C.muted}">follow-thru</text>
+  <!-- Ball path (barely clears net, lands short) -->
+  <path d="M 290,150 Q 242,188 202,198" fill="none" stroke="${C.muted}" stroke-width="1.5" stroke-dasharray="4,3" opacity="0.5"/>
+  <!-- Disguise note -->
+  <text x="62" y="54" font-family="system-ui,sans-serif" font-size="9" fill="${C.muted}" font-style="italic">same prep as normal forehand</text>
+  <path d="M 105,57 Q 120,72 148,92" fill="none" stroke="${C.muted}" stroke-width="1" stroke-dasharray="3,2" opacity="0.45"/>
+  <!-- Labels -->
+  <text x="200" y="262" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="${C.text}" text-anchor="middle">Drop Shot — Soft Wrist, Open Face</text>
+  <text x="200" y="279" font-family="system-ui,sans-serif" font-size="10" fill="${C.muted}" text-anchor="middle">Disguise with normal prep, decelerate at contact, open face adds backspin</text>
+</svg>`;
+
 const SLICE_SVG = shotSvg(
   "Slice Forehand — Backspin, stays low",
   `<path d="M 30,148 Q 200,120 370,155" fill="none" stroke="#06b6d4" stroke-width="2.5" stroke-dasharray="6,3"/>
@@ -557,6 +622,7 @@ const TENNIS: LearnActivity = {
                 description: "Delicate touch shot that barely clears the net.",
                 difficulty: "advanced",
                 content: [
+                  { type: "svg", svg: DROP_SHOT_SVG, caption: "Soft wrist and open racket face at waist-height contact — disguise the prep, decelerate at impact." },
                   { type: "section-header", text: "The Art of Disguise" },
                   { type: "text", text: "A drop shot is only effective when the opponent doesn't read it early. Disguise it by using the same preparation as a regular groundstroke, then dramatically reduce swing speed at the last moment and 'catch' the ball on the strings." },
                   { type: "key-points", points: [
