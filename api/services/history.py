@@ -153,6 +153,31 @@ async def list_sessions(
     return sessions, total
 
 
+async def delete_session(
+    pool: asyncpg.Pool,
+    session_id: str,
+    user_id: str,
+) -> Optional[Dict[str, str]]:
+    """
+    Delete the session row and return its S3 keys for cleanup, or None if not found.
+    """
+    row = await pool.fetchrow(
+        """
+        DELETE FROM analysis_sessions
+        WHERE id = $1::uuid AND user_id = $2::uuid
+        RETURNING input_s3_key, annotated_s3_key
+        """,
+        session_id,
+        user_id,
+    )
+    if row is None:
+        return None
+    return {
+        "input_s3_key": row["input_s3_key"],
+        "annotated_s3_key": row["annotated_s3_key"],
+    }
+
+
 async def get_session(
     pool: asyncpg.Pool,
     session_id: str,
