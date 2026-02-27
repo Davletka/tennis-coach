@@ -13,6 +13,16 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 mkdirSync(SCREENSHOTS_DIR, { recursive: true });
 
+// Helper to make a simple URL-navigation scenario
+const nav = (name, description, url) => ({
+  name,
+  description,
+  setup: async (page) => {
+    await page.goto(`${BASE_URL}${url}`, { waitUntil: "networkidle2" });
+    await sleep(WAIT_MS);
+  },
+});
+
 // Tab states to capture by setting localStorage + clicking tabs
 const SCENARIOS = [
   {
@@ -80,6 +90,22 @@ const SCENARIOS = [
       await sleep(WAIT_MS);
     },
   },
+  // Learn tab — all sub-routes (IDs match learn-content.ts)
+  nav("05-learn-sports", "Learn — sport selector", "/learn"),
+  nav("06-learn-tennis-modules", "Learn — Tennis modules grid", "/learn/tennis"),
+  nav("07-learn-tennis-forehand-variants", "Learn — Forehand grip variants", "/learn/tennis/forehand"),
+  nav("08-learn-tennis-forehand-eastern-lessons", "Learn — Eastern grip lessons", "/learn/tennis/forehand/eastern"),
+  nav("09-learn-tennis-forehand-eastern-flat", "Learn — Flat Forehand lesson", "/learn/tennis/forehand/eastern/flat-forehand"),
+  nav("10-learn-tennis-backhand-variants", "Learn — Backhand variants", "/learn/tennis/backhand"),
+  nav("11-learn-tennis-backhand-two-handed", "Learn — Two-handed backhand lessons", "/learn/tennis/backhand/two-handed"),
+  nav("12-learn-tennis-serve-lessons", "Learn — Serve direct lessons", "/learn/tennis/serve"),
+  nav("13-learn-tennis-serve-flat", "Learn — Flat Serve lesson", "/learn/tennis/serve/flat-serve"),
+  nav("14-learn-gym-modules", "Learn — Gym modules grid", "/learn/gym"),
+  nav("15-learn-gym-chest-variants", "Learn — Chest variants", "/learn/gym/chest"),
+  nav("16-learn-gym-chest-barbell-lessons", "Learn — Barbell chest lessons", "/learn/gym/chest/barbell"),
+  nav("17-learn-gym-chest-barbell-bench", "Learn — Bench Press lesson", "/learn/gym/chest/barbell/bench-press"),
+  nav("18-learn-gym-plans-list", "Learn — Workout plans list", "/learn/gym/plans"),
+  nav("19-learn-gym-plans-ppl", "Learn — PPL plan detail", "/learn/gym/plans/ppl"),
 ];
 
 const VIEWPORTS = [
