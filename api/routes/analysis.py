@@ -1,16 +1,19 @@
 """
 Analysis routes:
-  POST /api/v1/analyze              — upload video, enqueue job
-  GET  /api/v1/jobs/{job_id}        — poll job status
-  GET  /api/v1/jobs/{job_id}/result — fetch completed result
+  POST /api/v1/analyze                   — upload video, enqueue job
+  GET  /api/v1/jobs/{job_id}             — poll job status
+  GET  /api/v1/jobs/{job_id}/result      — fetch completed result
+  POST /api/v1/jobs/{job_id}/retry       — re-queue a failed job
 """
 from __future__ import annotations
 
+import hashlib
+import io
+import logging
 import uuid
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
-from fastapi.responses import JSONResponse
 
 from api.auth.dependencies import get_current_user
 from api.models import (
@@ -25,9 +28,12 @@ from api.models import (
 from api.services import job_store, storage
 from api.tasks.analyze import run_analysis
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/api/v1")
 
 _ALLOWED_EXTENSIONS = {".mp4", ".mov", ".avi", ".mkv"}
+_CHUNK_SIZE = 65536  # 64 KB
 
 
 @router.post("/analyze", response_model=AnalyzeResponse, status_code=202)
@@ -39,6 +45,9 @@ async def create_analysis(
     Accept an uploaded video, push it to S3, and enqueue a Celery analysis task.
     The authenticated user's ID (from JWT) is passed to the task so the completed
     session is persisted to Postgres for history/progress tracking.
+
+    Same video file (identified by SHA-256) is deduplicated per user — the S3
+    upload is skipped and the existing object reused.
     """
     import os
     ext = os.path.splitext(file.filename or "")[1].lower()
@@ -48,18 +57,90 @@ async def create_analysis(
             detail=f"Unsupported file type '{ext}'. Allowed: {sorted(_ALLOWED_EXTENSIONS)}",
         )
 
-    job_id = str(uuid.uuid4())
-    s3_key = f"uploads/{job_id}/{file.filename}"
+    user_id = current_user["sub"]
 
-    # Stream file directly to S3 — avoids holding the whole video in memory
-    storage.upload_fileobj(file.file, s3_key)
+    # Read the upload into memory while computing its SHA-256 hash
+    sha256 = hashlib.sha256()
+    buf = io.BytesIO()
+    while True:
+        chunk = await file.read(_CHUNK_SIZE)
+        if not chunk:
+            break
+        sha256.update(chunk)
+        buf.write(chunk)
+    file_hash = sha256.hexdigest()
+    buf.seek(0)
+
+    # Check video deduplication cache
+    cached_s3_key = job_store.get_video_cache(user_id, file_hash)
+    if cached_s3_key:
+        logger.info("Video cache hit for user=%s hash=%s key=%s", user_id, file_hash, cached_s3_key)
+        s3_key = cached_s3_key
+    else:
+        job_id_for_key = str(uuid.uuid4())
+        s3_key = f"uploads/{job_id_for_key}/{file.filename}"
+        storage.upload_fileobj(buf, s3_key)
+        job_store.set_video_cache(user_id, file_hash, s3_key)
+        logger.info("Video uploaded to S3 for user=%s hash=%s key=%s", user_id, file_hash, s3_key)
 
     # Create Redis job record (user-scoped)
-    user_id = current_user["sub"]
-    job_store.create_job(job_id, user_id=user_id)
+    job_id = str(uuid.uuid4())
+    original_filename = file.filename or ""
+    job_store.create_job(job_id, user_id=user_id, original_filename=original_filename)
 
     # Enqueue Celery task; user_id always present (auth is mandatory)
-    run_analysis.delay(job_id, s3_key, file.filename, user_id=user_id)
+    run_analysis.delay(job_id, s3_key, original_filename, user_id=user_id)
+
+    return AnalyzeResponse(job_id=job_id, status="pending")
+
+
+@router.post("/jobs/{job_id}/retry", response_model=AnalyzeResponse, status_code=202)
+async def retry_analysis(
+    job_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Re-queue a failed job from the furthest completed checkpoint.
+
+    - If ``annotated_s3_key`` AND ``metrics`` are both set → skip to coaching step
+    - Otherwise → re-run from the beginning (video is already on S3)
+    """
+    record = job_store.get_job(job_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail=f"Job '{job_id}' not found.")
+    if record.get("user_id") != current_user["sub"]:
+        raise HTTPException(status_code=403, detail="Access denied.")
+    if record.get("status") != "failed":
+        raise HTTPException(
+            status_code=409,
+            detail=f"Job '{job_id}' cannot be retried: status is '{record.get('status')}'.",
+        )
+
+    # Determine the best resume point
+    if record.get("annotated_s3_key") and record.get("metrics"):
+        resume_from = "coaching"
+    else:
+        resume_from = "start"
+
+    logger.info("Retrying job=%s resume_from=%s", job_id, resume_from)
+
+    # Reset job state so the client can poll again
+    job_store.update_job(
+        job_id,
+        status="pending",
+        progress=0,
+        message="Retrying…",
+        error=None,
+    )
+
+    original_filename = record.get("original_filename", "")
+    run_analysis.delay(
+        job_id,
+        record["input_s3_key"],
+        original_filename,
+        user_id=record.get("user_id"),
+        resume_from=resume_from,
+    )
 
     return AnalyzeResponse(job_id=job_id, status="pending")
 

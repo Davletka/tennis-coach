@@ -50,12 +50,13 @@ def _now_iso() -> str:
 # Public API
 # ---------------------------------------------------------------------------
 
-def create_job(job_id: str, user_id: str = "") -> Dict[str, Any]:
+def create_job(job_id: str, user_id: str = "", original_filename: str = "") -> Dict[str, Any]:
     """Insert a new job record with status=pending. Returns the record."""
     now = _now_iso()
     record: Dict[str, Any] = {
         "job_id": job_id,
         "user_id": user_id,
+        "original_filename": original_filename,
         "status": "pending",
         "progress": 0,
         "message": "Queued",
@@ -92,3 +93,15 @@ def get_job(job_id: str) -> Optional[Dict[str, Any]]:
     if raw is None:
         return None
     return json.loads(raw)
+
+
+def get_video_cache(user_id: str, file_hash: str) -> Optional[str]:
+    """Return existing s3_key for this user+hash combo, or None."""
+    r = _redis()
+    return r.get(f"vidcache:{user_id}:{file_hash}")
+
+
+def set_video_cache(user_id: str, file_hash: str, s3_key: str, ttl: int = 604800) -> None:
+    """Store user+hash → s3_key mapping with TTL (default 7 days)."""
+    r = _redis()
+    r.set(f"vidcache:{user_id}:{file_hash}", s3_key, ex=ttl)

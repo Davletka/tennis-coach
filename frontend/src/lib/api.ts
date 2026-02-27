@@ -194,6 +194,21 @@ export async function getJobResult(
   return res.json() as Promise<JobResultResponse>;
 }
 
+export async function retryJob(
+  jobId: string,
+  token: string,
+): Promise<AnalyzeResponse> {
+  const res = await fetch(`${API_BASE}/api/v1/jobs/${jobId}/retry`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Retry failed (${res.status}): ${detail}`);
+  }
+  return res.json() as Promise<AnalyzeResponse>;
+}
+
 // ---------------------------------------------------------------------------
 // Fetch helpers — authenticated
 // ---------------------------------------------------------------------------
