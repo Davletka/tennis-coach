@@ -13,7 +13,11 @@ const BASE_URL = "http://localhost:3000";
 const SCREENSHOTS_DIR = path.join(__dirname, "..", "screenshots");
 
 const routes = [
-  { path: "/", name: "home" },
+  { path: "/analyze",  name: "analyze"  },
+  { path: "/history",  name: "history"  },
+  { path: "/compare",  name: "compare"  },
+  { path: "/progress", name: "progress" },
+  { path: "/learn",    name: "learn"    },
 ];
 
 const viewports = [
