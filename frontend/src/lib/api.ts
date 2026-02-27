@@ -100,7 +100,7 @@ export interface UserProfile {
 // ---------------------------------------------------------------------------
 
 export interface SessionSummary {
-  id: string;
+  session_id: string;
   job_id: string;
   recorded_at: string;
   original_filename: string;
@@ -263,6 +263,21 @@ export async function getProgress(
   );
   if (!res.ok) throw new Error(`Progress fetch failed (${res.status})`);
   return res.json() as Promise<ProgressResponse>;
+}
+
+export async function deleteSession(
+  token: string,
+  userId: string,
+  sessionId: string,
+): Promise<void> {
+  const res = await fetch(
+    `${API_BASE}/api/v1/users/${userId}/sessions/${sessionId}`,
+    { method: "DELETE", headers: authHeaders(token) }
+  );
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Delete failed (${res.status}): ${detail}`);
+  }
 }
 
 export async function compareSessions(

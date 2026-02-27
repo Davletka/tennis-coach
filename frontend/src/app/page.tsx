@@ -8,6 +8,7 @@ import {
   getJobResult,
   getMe,
   listSessions,
+  deleteSession,
   getProgress,
   compareSessions,
   type JobResultResponse,
@@ -517,22 +518,6 @@ function CoachingPanel({
       <div className="p-4 text-sm text-gray-200 whitespace-pre-wrap leading-relaxed">
         {report[activeTab] || <span className="text-gray-500 italic">No data.</span>}
       </div>
-
-      {report.top_3_priorities.length > 0 && (
-        <div className="border-t border-gray-700 p-4">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
-            Top Priorities
-          </p>
-          <ol className="space-y-1 text-sm text-gray-200">
-            {report.top_3_priorities.map((p, i) => (
-              <li key={i} className="flex gap-2">
-                <span className="flex-shrink-0 font-bold text-green-400">{i + 1}.</span>
-                <span>{p}</span>
-              </li>
-            ))}
-          </ol>
-        </div>
-      )}
     </div>
   );
 }
@@ -818,6 +803,24 @@ function ResultView({
         <CoachingPanel report={result.coaching_report} />
       </div>
 
+      {result.coaching_report.top_3_priorities.length > 0 && (
+        <div className="space-y-2">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+            Top Priorities
+          </h2>
+          <div className="rounded-xl border border-gray-700 bg-gray-900 p-4">
+            <ol className="space-y-1 text-sm text-gray-200">
+              {result.coaching_report.top_3_priorities.map((p, i) => (
+                <li key={i} className="flex gap-2">
+                  <span className="flex-shrink-0 font-bold text-green-400">{i + 1}.</span>
+                  <span>{p}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
+      )}
+
       <MetricsTable metrics={result.metrics} />
 
       <button
@@ -870,8 +873,27 @@ function DetectionBadge({ rate }: { rate: number }) {
   }
 }
 
-function SessionCard({ session }: { session: SessionSummary }) {
+function SessionCard({
+  session,
+  onDelete,
+}: {
+  session: SessionSummary;
+  onDelete: (sessionId: string) => Promise<void>;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const [confirming, setConfirming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  async function handleDelete(e: React.MouseEvent) {
+    e.stopPropagation();
+    setDeleting(true);
+    try {
+      await onDelete(session.session_id);
+    } finally {
+      setDeleting(false);
+      setConfirming(false);
+    }
+  }
 
   return (
     <div className="rounded-xl border border-gray-700 bg-gray-900">
@@ -933,7 +955,55 @@ function SessionCard({ session }: { session: SessionSummary }) {
             </p>
             <CoachingPanel report={session.coaching} />
           </div>
+          {session.coaching.top_3_priorities.length > 0 && (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                Top Priorities
+              </p>
+              <div className="rounded-xl border border-gray-700 bg-gray-900 p-4">
+                <ol className="space-y-1 text-sm text-gray-200">
+                  {session.coaching.top_3_priorities.map((p, i) => (
+                    <li key={i} className="flex gap-2">
+                      <span className="flex-shrink-0 font-bold text-green-400">{i + 1}.</span>
+                      <span>{p}</span>
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            </div>
+          )}
           <MetricsTable metrics={session.metrics} />
+          <div className="flex justify-end border-t border-gray-700 pt-3">
+            {confirming ? (
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-gray-400">Delete this session?</span>
+                <button
+                  onClick={handleDelete}
+                  disabled={deleting}
+                  className="rounded-md bg-red-600 px-3 py-1 text-xs font-medium text-white hover:bg-red-500 disabled:opacity-50"
+                >
+                  {deleting ? "Deleting…" : "Confirm"}
+                </button>
+                <button
+                  onClick={(e) => { e.stopPropagation(); setConfirming(false); }}
+                  disabled={deleting}
+                  className="rounded-md border border-gray-600 px-3 py-1 text-xs font-medium text-gray-300 hover:border-gray-400 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={(e) => { e.stopPropagation(); setConfirming(true); }}
+                className="flex items-center gap-1.5 rounded-md border border-gray-700 px-3 py-1 text-xs font-medium text-gray-400 transition-colors hover:border-red-800 hover:text-red-400"
+              >
+                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                </svg>
+                Delete
+              </button>
+            )}
+          </div>
         </div>
       )}
     </div>
@@ -974,6 +1044,15 @@ function HistoryTab({
     }
   }, [data, token, userId]);
 
+  const handleDelete = useCallback(async (sessionId: string) => {
+    await deleteSession(token, userId, sessionId);
+    setData((prev) => {
+      if (!prev) return prev;
+      const sessions = prev.sessions.filter((s) => s.session_id !== sessionId);
+      return { ...prev, sessions, total: prev.total - 1 };
+    });
+  }, [token, userId]);
+
   if (loading) return <Spinner />;
   if (error) return <ErrorBanner message={error} />;
 
@@ -1010,7 +1089,7 @@ function HistoryTab({
       </p>
       <div className="space-y-3">
         {data.sessions.map((s) => (
-          <SessionCard key={s.id} session={s} />
+          <SessionCard key={s.session_id} session={s} onDelete={handleDelete} />
         ))}
       </div>
       {hasMore && (
@@ -1273,7 +1352,7 @@ function CompareTab({
           >
             <option value="">Select session…</option>
             {sessions.map((s) => (
-              <option key={s.id} value={s.id} disabled={s.id === sessionBId}>
+              <option key={s.session_id} value={s.session_id} disabled={s.session_id === sessionBId}>
                 {sessionLabel(s)}
               </option>
             ))}
@@ -1291,7 +1370,7 @@ function CompareTab({
           >
             <option value="">Select session…</option>
             {sessions.map((s) => (
-              <option key={s.id} value={s.id} disabled={s.id === sessionAId}>
+              <option key={s.session_id} value={s.session_id} disabled={s.session_id === sessionAId}>
                 {sessionLabel(s)}
               </option>
             ))}

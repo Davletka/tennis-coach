@@ -57,3 +57,9 @@ def presigned_url(s3_key: str, expiry: int | None = None) -> str:
         Params={"Bucket": settings.r2_bucket_name, "Key": s3_key},
         ExpiresIn=expiry,
     )
+
+
+def delete_object(s3_key: str) -> None:
+    """Delete a single object from R2."""
+    client = _r2_client()
+    client.delete_object(Bucket=settings.r2_bucket_name, Key=s3_key)

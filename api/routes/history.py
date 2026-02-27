@@ -1,9 +1,10 @@
 """
 History / Progress / Compare routes:
 
-  GET  /api/v1/users/{user_id}/history          — paginated session list
-  GET  /api/v1/users/{user_id}/progress         — time-series scalar metrics
-  POST /api/v1/users/{user_id}/compare          — delta coaching between two sessions
+  GET    /api/v1/users/{user_id}/history                      — paginated session list
+  GET    /api/v1/users/{user_id}/progress                     — time-series scalar metrics
+  POST   /api/v1/users/{user_id}/compare                      — delta coaching between two sessions
+  DELETE /api/v1/users/{user_id}/sessions/{session_id}        — delete a session
 
 All routes require authentication. The authenticated user may only access their
 own sessions; requesting another user's data returns 403.
@@ -12,7 +13,7 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 
 from api import db
 from api.auth.dependencies import get_current_user
@@ -219,3 +220,39 @@ async def compare_sessions(
         metric_deltas=metric_deltas,
         delta_coaching=delta_coaching,
     )
+
+
+# ---------------------------------------------------------------------------
+# DELETE /api/v1/users/{user_id}/sessions/{session_id}
+# ---------------------------------------------------------------------------
+
+@router.delete("/sessions/{session_id}", status_code=204)
+async def delete_session(
+    user_id: str,
+    session_id: str,
+    current_user: dict = Depends(get_current_user),
+):
+    """
+    Permanently delete a session and its associated S3 objects.
+    Returns 204 No Content on success, 404 if session not found.
+    """
+    _validate_uuid(user_id, "user_id")
+    _validate_uuid(session_id, "session_id")
+    _check_ownership(user_id, current_user)
+
+    pool = db.get_pool()
+    s3_keys = await history.delete_session(pool, session_id, user_id)
+    if s3_keys is None:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session '{session_id}' not found or does not belong to user.",
+        )
+
+    # Best-effort S3 cleanup — don't fail the request if storage deletion errors
+    for key in {s3_keys["input_s3_key"], s3_keys["annotated_s3_key"]}:
+        try:
+            storage.delete_object(key)
+        except Exception:
+            pass
+
+    return Response(status_code=204)
