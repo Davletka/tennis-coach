@@ -52,6 +52,9 @@ class FrameMetrics:
     right_wrist_speed: Optional[float] = None
     left_wrist_speed: Optional[float] = None
 
+    # Wrist height relative to hip midpoint (negative = wrist above hips)
+    right_wrist_relative_y: Optional[float] = None
+
 
 def compute_frame_metrics(
     result: Optional[LandmarkResult],
@@ -133,6 +136,10 @@ def compute_frame_metrics(
     # -- CoM lateral position (normalized x) --
     if lh and rh:
         fm.com_x = ((lh[0] + rh[0]) / 2.0) / frame_width
+        hip_mid_y = (lh[1] + rh[1]) / 2.0
+        if rw:
+            # Negative = wrist above hips, positive = wrist below hips
+            fm.right_wrist_relative_y = (rw[1] - hip_mid_y) / frame_height
 
     # -- Wrist speed (pixels/frame, normalized by frame diagonal) --
     diag = float(np.sqrt(frame_width ** 2 + frame_height ** 2))
@@ -250,6 +257,21 @@ class PerSwingMetrics:
     stance_width_mean:   Optional[float] = None
     com_x_range:         Optional[float] = None
 
+    # Contact-point angles (peak frame ± 2 frames average)
+    right_elbow_at_contact:    Optional[float] = None
+    left_elbow_at_contact:     Optional[float] = None
+    right_shoulder_at_contact: Optional[float] = None
+    left_shoulder_at_contact:  Optional[float] = None
+    right_knee_at_contact:     Optional[float] = None
+    left_knee_at_contact:      Optional[float] = None
+    torso_rotation_at_contact: Optional[float] = None
+
+    # How much torso rotation changed during the swing (hip-shoulder kinematic chain)
+    torso_rotation_delta: Optional[float] = None
+
+    # Wrist height relative to hips at contact (negative = wrist above hips = high contact)
+    right_wrist_y_at_contact: Optional[float] = None
+
 
 def compute_per_swing_metrics(
     frame_metrics: List[FrameMetrics],
@@ -279,6 +301,26 @@ def compute_per_swing_metrics(
             stance_width_mean=  safe_mean([fm.stance_width   for fm in window]),
             com_x_range=float(max(com_vals) - min(com_vals)) if com_vals else None,
         )
+
+        # Contact-point angles: average of peak ± 2 frames
+        CONTACT_HALF = 2
+        cs = max(0, event.frame_index - CONTACT_HALF)
+        ce = min(len(frame_metrics) - 1, event.frame_index + CONTACT_HALF)
+        contact = frame_metrics[cs:ce + 1]
+        psm.right_elbow_at_contact    = safe_mean([fm.right_elbow_angle    for fm in contact])
+        psm.left_elbow_at_contact     = safe_mean([fm.left_elbow_angle     for fm in contact])
+        psm.right_shoulder_at_contact = safe_mean([fm.right_shoulder_angle for fm in contact])
+        psm.left_shoulder_at_contact  = safe_mean([fm.left_shoulder_angle  for fm in contact])
+        psm.right_knee_at_contact     = safe_mean([fm.right_knee_angle     for fm in contact])
+        psm.left_knee_at_contact      = safe_mean([fm.left_knee_angle      for fm in contact])
+        psm.torso_rotation_at_contact = safe_mean([fm.torso_rotation       for fm in contact])
+        psm.right_wrist_y_at_contact  = safe_mean([fm.right_wrist_relative_y for fm in contact])
+
+        # Torso rotation delta: how much the torso rotated during the swing window
+        torso_in_window = [fm.torso_rotation for fm in window if fm.torso_rotation is not None]
+        if len(torso_in_window) >= 2:
+            psm.torso_rotation_delta = float(max(torso_in_window) - min(torso_in_window))
+
         result.append(psm)
     return result
 
