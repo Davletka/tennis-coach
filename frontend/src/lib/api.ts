@@ -60,12 +60,25 @@ export interface CoachingReportResult {
   top_3_priorities: string[];
 }
 
+// [x, y, visibility] — coordinates normalised [0, 1]; null if below visibility threshold
+type LandmarkPoint = [number, number, number] | null;
+
+export interface FrameData {
+  lm: LandmarkPoint[] | null; // 33 MediaPipe landmarks; null if no pose detected
+  re: number | null; // right elbow angle (degrees)
+  le: number | null; // left elbow angle
+  rs: number | null; // right shoulder angle
+  ls: number | null; // left shoulder angle
+  rk: number | null; // right knee angle
+  lk: number | null; // left knee angle
+}
+
 export interface JobResultResponse {
   job_id: string;
   status: JobStatus;
   coaching_report: CoachingReportResult;
   metrics: MetricsResult;
-  annotated_video_url: string;
+  frame_data: FrameData[];
   input_video_url: string;
   fps: number;
   total_source_frames: number;

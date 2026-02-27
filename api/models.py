@@ -81,6 +81,19 @@ class CoachingReportResult(BaseModel):
     top_3_priorities: List[str] = []
 
 
+class FrameData(BaseModel):
+    """Per-frame landmark positions and joint angles for frontend canvas rendering."""
+    # 33-element list; each element is [x, y, visibility] or null if below threshold.
+    # None if no pose was detected for this frame.
+    lm: Optional[List[Optional[List[float]]]] = None
+    re: Optional[float] = None  # right elbow angle (degrees)
+    le: Optional[float] = None  # left elbow angle
+    rs: Optional[float] = None  # right shoulder angle
+    ls: Optional[float] = None  # left shoulder angle
+    rk: Optional[float] = None  # right knee angle
+    lk: Optional[float] = None  # left knee angle
+
+
 class UserResponse(BaseModel):
     user_id: str
     email: str
@@ -100,7 +113,7 @@ class JobResultResponse(BaseModel):
     status: JobStatus
     coaching_report: CoachingReportResult
     metrics: MetricsResult
-    annotated_video_url: str
+    frame_data: List[FrameData]
     input_video_url: str
     fps: float
     total_source_frames: int

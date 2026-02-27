@@ -20,6 +20,7 @@ from api.models import (
     AnalyzeResponse,
     AngleStatResult,
     CoachingReportResult,
+    FrameData,
     JobResultResponse,
     JobStatusResponse,
     MetricsResult,
@@ -102,7 +103,7 @@ async def retry_analysis(
     """
     Re-queue a failed job from the furthest completed checkpoint.
 
-    - If ``annotated_s3_key`` AND ``metrics`` are both set → skip to coaching step
+    - If ``frame_data`` AND ``metrics`` are both set → skip to coaching step
     - Otherwise → re-run from the beginning (video is already on S3)
     """
     record = job_store.get_job(job_id)
@@ -117,7 +118,7 @@ async def retry_analysis(
         )
 
     # Determine the best resume point
-    if record.get("annotated_s3_key") and record.get("metrics"):
+    if record.get("frame_data") and record.get("metrics"):
         resume_from = "coaching"
     else:
         resume_from = "start"
@@ -217,8 +218,7 @@ async def get_job_result(job_id: str, current_user: dict = Depends(get_current_u
 
     coaching = CoachingReportResult(**coaching_raw)
 
-    # Generate fresh presigned URLs — not stored, so they never expire in Redis
-    annotated_url = storage.presigned_url(record["annotated_s3_key"])
+    # Generate fresh presigned URL for the original video
     input_url = storage.presigned_url(record["input_s3_key"])
 
     return JobResultResponse(
@@ -226,7 +226,7 @@ async def get_job_result(job_id: str, current_user: dict = Depends(get_current_u
         status="completed",
         coaching_report=coaching,
         metrics=metrics,
-        annotated_video_url=annotated_url,
+        frame_data=[FrameData(**fd) for fd in record.get("frame_data", [])],
         input_video_url=input_url,
         fps=record["fps"],
         total_source_frames=record["total_source_frames"],

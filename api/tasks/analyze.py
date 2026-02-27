@@ -84,11 +84,11 @@ def run_analysis(
       - ``"coaching"`` — skip download/pose/annotation; re-run Claude only
     """
     # Deferred imports — keep MediaPipe out of the API process
-    from pipeline.video_io import extract_frames, frames_to_video
+    from pipeline.video_io import extract_frames
     from pipeline.pose_detector import PoseDetector
     from pipeline.metrics import compute_frame_metrics, aggregate_metrics
-    from pipeline.annotator import annotate_all_frames
     from pipeline.coach import get_coaching_feedback
+    from config import VISIBILITY_THRESHOLD
     from api.settings import settings
 
     def _progress(pct: int, msg: str) -> None:
@@ -104,7 +104,6 @@ def run_analysis(
             agg = _metrics_from_dict(job["metrics"])
             fps = job["fps"]
             total_source_frames = job["total_source_frames"]
-            annotated_s3_key = job["annotated_s3_key"]
 
             report = get_coaching_feedback(
                 agg,
@@ -239,35 +238,36 @@ def run_analysis(
             job_store.update_job(job_id, metrics=metrics_dict)
 
             # ----------------------------------------------------------------
-            # 5. Annotate frames
+            # 5. Serialize per-frame landmark + angle data for frontend rendering
             # ----------------------------------------------------------------
-            _progress(70, "Annotating video")
-            swing_indices = {e.frame_index for e in agg.swing_events}
-            annotated_frames = annotate_all_frames(
-                frames, pose_results, frame_metrics, swing_indices
-            )
+            _progress(65, "Preparing frame data")
+            frame_data = []
+            for pose_result, fm in zip(pose_results, frame_metrics):
+                if pose_result is None:
+                    lm = None
+                else:
+                    lm = [
+                        [round(x, 4), round(y, 4), round(vis, 3)]
+                        if vis >= VISIBILITY_THRESHOLD else None
+                        for x, y, z, vis in pose_result.landmarks
+                    ]
+                frame_data.append({
+                    "lm": lm,
+                    "re": round(fm.right_elbow_angle, 1) if fm.right_elbow_angle is not None else None,
+                    "le": round(fm.left_elbow_angle, 1) if fm.left_elbow_angle is not None else None,
+                    "rs": round(fm.right_shoulder_angle, 1) if fm.right_shoulder_angle is not None else None,
+                    "ls": round(fm.left_shoulder_angle, 1) if fm.left_shoulder_angle is not None else None,
+                    "rk": round(fm.right_knee_angle, 1) if fm.right_knee_angle is not None else None,
+                    "lk": round(fm.left_knee_angle, 1) if fm.left_knee_angle is not None else None,
+                })
+
+            # Checkpoint frame_data before Claude (enables coaching-only retry)
+            job_store.update_job(job_id, frame_data=frame_data)
 
             # ----------------------------------------------------------------
-            # 6. Encode annotated video
+            # 6. Get Claude coaching feedback
             # ----------------------------------------------------------------
-            _progress(80, "Encoding annotated video")
-            annotated_path = os.path.join(tmpdir, f"annotated_{original_filename}")
-            frames_to_video(annotated_frames, annotated_path, fps)
-
-            # ----------------------------------------------------------------
-            # 7. Upload annotated video to S3
-            # ----------------------------------------------------------------
-            _progress(90, "Uploading to S3")
-            annotated_s3_key = f"results/{job_id}/annotated_{original_filename}"
-            storage.upload_file(annotated_path, annotated_s3_key)
-
-            # Checkpoint annotated_s3_key before Claude (enables coaching-only retry)
-            job_store.update_job(job_id, annotated_s3_key=annotated_s3_key)
-
-            # ----------------------------------------------------------------
-            # 8. Get Claude coaching feedback
-            # ----------------------------------------------------------------
-            _progress(95, "Generating coaching feedback")
+            _progress(80, "Generating coaching feedback")
             report = get_coaching_feedback(
                 agg,
                 fps,
@@ -284,7 +284,7 @@ def run_analysis(
             }
 
             # ----------------------------------------------------------------
-            # 9. Mark job completed
+            # 7. Mark job completed
             # ----------------------------------------------------------------
             job_store.update_job(
                 job_id,
@@ -292,7 +292,6 @@ def run_analysis(
                 progress=100,
                 message="Analysis complete",
                 input_s3_key=input_s3_key,
-                annotated_s3_key=annotated_s3_key,
                 fps=fps,
                 total_source_frames=total_source_frames,
                 metrics=metrics_dict,
@@ -300,7 +299,7 @@ def run_analysis(
             )
 
             # ----------------------------------------------------------------
-            # 10. Persist session to Postgres (only when user_id is provided)
+            # 8. Persist session to Postgres (only when user_id is provided)
             # Celery worker has no async event loop, so use psycopg2 (sync).
             # ----------------------------------------------------------------
             if user_id is not None:
@@ -341,7 +340,7 @@ def run_analysis(
                                 metrics_dict.get("frames_analyzed", 0),
                                 metrics_dict.get("detection_rate", 0.0),
                                 input_s3_key,
-                                annotated_s3_key,
+                                input_s3_key,  # annotated_s3_key column: reuse input (no separate annotated video)
                                 _json.dumps(metrics_dict),
                                 _json.dumps(coaching_dict),
                             ),

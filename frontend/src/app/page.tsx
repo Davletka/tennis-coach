@@ -625,6 +625,13 @@ function MetricsTable({ metrics }: { metrics: MetricsResult }) {
   );
 }
 
+// MediaPipe 33-landmark skeleton connections — matches config.py POSE_CONNECTIONS
+const POSE_CONNECTIONS: [number, number][] = [
+  [11, 12], [11, 13], [13, 15], [12, 14], [14, 16],
+  [11, 23], [12, 24], [23, 24],
+  [23, 25], [25, 27], [24, 26], [26, 28],
+];
+
 function ResultView({
   result,
   onReset,
@@ -633,6 +640,131 @@ function ResultView({
   onReset: () => void;
 }) {
   const lowDetection = result.metrics.detection_rate < 0.4;
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const [showSkeleton, setShowSkeleton] = useState(true);
+  const [showAngles, setShowAngles] = useState(true);
+  const [showTrail, setShowTrail] = useState(true);
+
+  // Keep canvas dimensions in sync with the video element's rendered size
+  useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+    const sync = () => {
+      canvas.width = video.clientWidth;
+      canvas.height = video.clientHeight;
+    };
+    const ro = new ResizeObserver(sync);
+    ro.observe(video);
+    video.addEventListener("loadedmetadata", sync);
+    sync();
+    return () => {
+      ro.disconnect();
+      video.removeEventListener("loadedmetadata", sync);
+    };
+  }, []);
+
+  // Draw pose overlay on every frame tick
+  useEffect(() => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas) return;
+
+    const swingFrames = new Set(result.metrics.swing_events.map((e) => e.frame_index));
+
+    function draw() {
+      if (!video || !canvas || canvas.width === 0) return;
+      const fi = Math.min(
+        Math.floor(video.currentTime * result.fps),
+        result.frame_data.length - 1,
+      );
+      const fd = result.frame_data[fi];
+      const ctx = canvas.getContext("2d")!;
+      const W = canvas.width;
+      const H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+      if (!fd?.lm) return;
+
+      if (showSkeleton) {
+        ctx.strokeStyle = "rgba(0,255,0,0.9)";
+        ctx.lineWidth = 2;
+        for (const [a, b] of POSE_CONNECTIONS) {
+          const ptA = fd.lm[a], ptB = fd.lm[b];
+          if (!ptA || !ptB) continue;
+          ctx.beginPath();
+          ctx.moveTo(ptA[0] * W, ptA[1] * H);
+          ctx.lineTo(ptB[0] * W, ptB[1] * H);
+          ctx.stroke();
+        }
+        ctx.fillStyle = "rgba(0,200,255,0.9)";
+        for (const pt of fd.lm) {
+          if (!pt) continue;
+          ctx.beginPath();
+          ctx.arc(pt[0] * W, pt[1] * H, 4, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      if (showTrail) {
+        const start = Math.max(0, fi - 15);
+        const rPts: [number, number][] = [];
+        const lPts: [number, number][] = [];
+        for (let i = start; i <= fi; i++) {
+          const t = result.frame_data[i];
+          if (!t?.lm) continue;
+          const rw = t.lm[16]; if (rw) rPts.push([rw[0] * W, rw[1] * H]);
+          const lw = t.lm[15]; if (lw) lPts.push([lw[0] * W, lw[1] * H]);
+        }
+        for (const pts of [rPts, lPts]) {
+          for (let i = 1; i < pts.length; i++) {
+            ctx.strokeStyle = `rgba(0,100,255,${(i / pts.length) * 0.8})`;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(pts[i - 1][0], pts[i - 1][1]);
+            ctx.lineTo(pts[i][0], pts[i][1]);
+            ctx.stroke();
+          }
+        }
+      }
+
+      if (showAngles) {
+        ctx.font = "bold 11px monospace";
+        ctx.fillStyle = "white";
+        ctx.shadowColor = "black";
+        ctx.shadowBlur = 3;
+        const angleMap: [number, number | null, string][] = [
+          [14, fd.re, "RE"], [13, fd.le, "LE"],
+          [12, fd.rs, "RS"], [11, fd.ls, "LS"],
+          [26, fd.rk, "RK"], [25, fd.lk, "LK"],
+        ];
+        for (const [lmIdx, angle, label] of angleMap) {
+          if (angle === null) continue;
+          const pt = fd.lm[lmIdx];
+          if (!pt) continue;
+          ctx.fillText(`${label}:${angle.toFixed(0)}°`, pt[0] * W + 6, pt[1] * H - 6);
+        }
+        ctx.shadowBlur = 0;
+      }
+
+      if (swingFrames.has(fi)) {
+        ctx.strokeStyle = "rgb(255,165,0)";
+        ctx.lineWidth = 3;
+        ctx.strokeRect(2, 2, W - 4, H - 4);
+        ctx.font = "bold 12px sans-serif";
+        ctx.fillStyle = "rgb(255,165,0)";
+        ctx.shadowBlur = 0;
+        ctx.fillText("SWING", W - 60, 20);
+      }
+    }
+
+    video.addEventListener("timeupdate", draw);
+    video.addEventListener("seeked", draw);
+    return () => {
+      video.removeEventListener("timeupdate", draw);
+      video.removeEventListener("seeked", draw);
+    };
+  }, [result, showSkeleton, showAngles, showTrail]);
 
   return (
     <div className="space-y-6">
@@ -645,35 +777,38 @@ function ResultView({
       )}
 
       <div className="space-y-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
-          Annotated Video
-        </h2>
-        <video
-          src={result.annotated_video_url}
-          controls
-          className="w-full rounded-lg bg-black"
-          style={{ maxHeight: "480px" }}
-        />
-        <a
-          href={result.annotated_video_url}
-          download
-          className="inline-flex items-center gap-1.5 rounded-md bg-gray-800 px-3 py-1.5 text-xs font-medium text-gray-200 hover:bg-gray-700"
-        >
-          <svg
-            className="h-3.5 w-3.5"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-            strokeWidth={2}
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3"
-            />
-          </svg>
-          Download annotated video
-        </a>
+        <div className="flex items-center justify-between">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+            Video + Pose Overlay
+          </h2>
+          <div className="flex items-center gap-3 text-xs text-gray-400">
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input type="checkbox" checked={showSkeleton} onChange={(e) => setShowSkeleton(e.target.checked)} className="accent-green-500" />
+              Skeleton
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input type="checkbox" checked={showAngles} onChange={(e) => setShowAngles(e.target.checked)} className="accent-green-500" />
+              Angles
+            </label>
+            <label className="flex items-center gap-1.5 cursor-pointer select-none">
+              <input type="checkbox" checked={showTrail} onChange={(e) => setShowTrail(e.target.checked)} className="accent-green-500" />
+              Trail
+            </label>
+          </div>
+        </div>
+        <div className="relative overflow-hidden rounded-lg bg-black">
+          <video
+            ref={videoRef}
+            src={result.input_video_url}
+            controls
+            className="block w-full"
+            style={{ maxHeight: "480px" }}
+          />
+          <canvas
+            ref={canvasRef}
+            className="pointer-events-none absolute inset-0 h-full w-full"
+          />
+        </div>
       </div>
 
       <div className="space-y-2">
