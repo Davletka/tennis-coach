@@ -247,57 +247,95 @@ const HIGH_BOUNCE_SVG = `<svg viewBox="0 0 400 290" xmlns="http://www.w3.org/200
   <!-- Court surface -->
   <rect x="20" y="232" width="360" height="8" fill="#6ee7b7" stroke="${C.outline}" stroke-width="1" opacity="0.7"/>
   <line x1="20" y1="240" x2="380" y2="240" stroke="${C.outline}" stroke-width="2"/>
+  <defs>
+    <marker id="arr-hb" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="${C.green}"/></marker>
+    <marker id="arr-hb-hip" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="${C.accent}"/></marker>
+  </defs>
+
+  <!-- === RACKET SWING ARC (connects 3 phases, low→contact) === -->
+  <path d="M 265,196 Q 296,118 316,54" fill="none" stroke="${C.green}" stroke-width="2" stroke-dasharray="6,3" opacity="0.5" marker-end="url(#arr-hb)"/>
+  <text x="334" y="128" font-family="system-ui,sans-serif" font-size="9" fill="${C.green}" font-weight="600">swing</text>
+  <text x="336" y="139" font-family="system-ui,sans-serif" font-size="9" fill="${C.green}" font-weight="600">path</text>
+
+  <!-- === GHOST 1: Backswing — arm+racket dropped low (opacity 0.2) === -->
+  <!-- upper arm drops down -->
+  <line x1="208" y1="90" x2="224" y2="132" stroke="${C.outline}" stroke-width="3" stroke-linecap="round" opacity="0.2"/>
+  <!-- forearm -->
+  <line x1="224" y1="132" x2="242" y2="162" stroke="${C.outline}" stroke-width="3" stroke-linecap="round" opacity="0.2"/>
+  <!-- wrist ghost -->
+  <circle cx="242" cy="162" r="6" fill="${C.accent}" opacity="0.2"/>
+  <!-- racket handle -->
+  <line x1="242" y1="162" x2="258" y2="182" stroke="#64748b" stroke-width="2.5" stroke-linecap="round" opacity="0.2"/>
+  <!-- racket head (low, behind) -->
+  <ellipse cx="268" cy="196" rx="12" ry="17" fill="none" stroke="${C.outline}" stroke-width="1.5" transform="rotate(-15 268 196)" opacity="0.2"/>
+
+  <!-- === GHOST 2: Mid-swing — arm+racket accelerating upward (opacity 0.42) === -->
+  <!-- upper arm -->
+  <line x1="208" y1="90" x2="248" y2="104" stroke="${C.outline}" stroke-width="3" stroke-linecap="round" opacity="0.42"/>
+  <!-- forearm -->
+  <line x1="248" y1="104" x2="274" y2="104" stroke="${C.outline}" stroke-width="3" stroke-linecap="round" opacity="0.42"/>
+  <!-- wrist ghost -->
+  <circle cx="274" cy="104" r="6" fill="${C.accent}" opacity="0.42"/>
+  <!-- racket handle -->
+  <line x1="274" y1="104" x2="300" y2="100" stroke="#64748b" stroke-width="2.5" stroke-linecap="round" opacity="0.42"/>
+  <!-- racket head (mid) -->
+  <ellipse cx="314" cy="92" rx="12" ry="17" fill="none" stroke="${C.outline}" stroke-width="1.5" transform="rotate(-40 314 92)" opacity="0.42"/>
+
+  <!-- === MAIN FIGURE: Contact position (solid) === -->
   <!-- Head -->
   <circle cx="175" cy="62" r="15" fill="#fde8d8" stroke="${C.outline}" stroke-width="2"/>
   <!-- Torso -->
   <line x1="175" y1="77" x2="178" y2="152" stroke="${C.outline}" stroke-width="5" stroke-linecap="round"/>
-  <!-- Shoulder line (rotated — right shoulder back for contact) -->
+  <!-- Shoulder line -->
   <line x1="155" y1="97" x2="208" y2="90" stroke="${C.outline}" stroke-width="3.5" stroke-linecap="round"/>
-  <!-- Left shoulder dot -->
   <circle cx="155" cy="97" r="5" fill="${C.muted}" opacity="0.6"/>
-  <!-- Right shoulder dot -->
   <circle cx="208" cy="90" r="5" fill="${C.muted}" opacity="0.6"/>
   <!-- Hips -->
   <line x1="164" y1="152" x2="196" y2="152" stroke="${C.outline}" stroke-width="4" stroke-linecap="round"/>
   <!-- Left leg -->
   <line x1="166" y1="152" x2="150" y2="198" stroke="${C.outline}" stroke-width="4" stroke-linecap="round"/>
   <line x1="150" y1="198" x2="138" y2="240" stroke="${C.outline}" stroke-width="4" stroke-linecap="round"/>
-  <!-- Right leg (front, planted) -->
+  <!-- Right leg -->
   <line x1="193" y1="152" x2="215" y2="193" stroke="${C.outline}" stroke-width="4" stroke-linecap="round"/>
   <line x1="215" y1="193" x2="228" y2="240" stroke="${C.outline}" stroke-width="4" stroke-linecap="round"/>
-  <!-- Left arm (pulling back to open shoulders) -->
+  <!-- Left arm -->
   <line x1="155" y1="97" x2="132" y2="118" stroke="${C.outline}" stroke-width="3" stroke-linecap="round"/>
   <line x1="132" y1="118" x2="115" y2="112" stroke="${C.outline}" stroke-width="3" stroke-linecap="round"/>
-  <!-- Right upper arm -->
+  <!-- Right upper arm (contact) -->
   <line x1="208" y1="90" x2="252" y2="96" stroke="${C.outline}" stroke-width="3.5" stroke-linecap="round"/>
-  <!-- Right forearm extended upward to shoulder-height contact -->
+  <!-- Right forearm (contact) -->
   <line x1="252" y1="96" x2="284" y2="78" stroke="${C.outline}" stroke-width="3.5" stroke-linecap="round"/>
   <!-- Wrist highlight -->
   <circle cx="284" cy="76" r="8" fill="${C.accent}" stroke="${C.white}" stroke-width="2.5"/>
-  <text x="296" y="70" font-family="system-ui,sans-serif" font-size="9" fill="${C.accent}" font-weight="700">wrist</text>
+  <text x="272" y="68" font-family="system-ui,sans-serif" font-size="9" fill="${C.accent}" font-weight="700">wrist snap</text>
   <!-- Racket handle -->
   <line x1="284" y1="76" x2="306" y2="57" stroke="#64748b" stroke-width="3.5" stroke-linecap="round"/>
-  <!-- Racket head (strings) -->
+  <!-- Racket head (contact) -->
   <ellipse cx="318" cy="46" rx="14" ry="20" fill="none" stroke="${C.outline}" stroke-width="2" transform="rotate(-25 318 46)"/>
   <line x1="308" y1="34" x2="328" y2="58" stroke="${C.outline}" stroke-width="1" opacity="0.35"/>
   <line x1="302" y1="46" x2="334" y2="46" stroke="${C.outline}" stroke-width="1" opacity="0.35"/>
-  <!-- Ball at shoulder height -->
+  <!-- Ball -->
   <circle cx="298" cy="68" r="7" fill="${C.accent}" opacity="0.75"/>
-  <!-- Shoulder rotation annotation -->
+
+  <!-- === ANNOTATIONS === -->
+  <!-- Shoulder rotation arc -->
   <path d="M 158,90 A 50,50 0 0,1 208,88" fill="none" stroke="${C.green}" stroke-width="2" stroke-dasharray="4,3"/>
   <text x="182" y="80" font-family="system-ui,sans-serif" font-size="9" fill="${C.green}" text-anchor="middle" font-weight="600">shoulder rotation</text>
-  <!-- Swing path arrow (low-to-high) -->
-  <defs><marker id="arr-hb" markerWidth="6" markerHeight="6" refX="3" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 Z" fill="${C.green}"/></marker></defs>
-  <path d="M 258,162 Q 272,122 282,82" fill="none" stroke="${C.green}" stroke-width="1.5" stroke-dasharray="5,3" opacity="0.85" marker-end="url(#arr-hb)"/>
-  <text x="238" y="145" font-family="system-ui,sans-serif" font-size="9" fill="${C.green}">low-to-high</text>
+  <!-- Hip rotation arc -->
+  <path d="M 167,156 A 18,8 0 0,1 194,154" fill="none" stroke="${C.accent}" stroke-width="2" stroke-dasharray="3,2" opacity="0.8" marker-end="url(#arr-hb-hip)"/>
+  <text x="178" y="170" font-family="system-ui,sans-serif" font-size="9" fill="${C.accent}" text-anchor="middle">hips drive</text>
+  <!-- Phase labels -->
+  <text x="55" y="210" font-family="system-ui,sans-serif" font-size="8" fill="${C.muted}" opacity="0.7">① backswing</text>
+  <text x="55" y="122" font-family="system-ui,sans-serif" font-size="8" fill="${C.muted}" opacity="0.7">② accelerate</text>
+  <text x="55" y="75" font-family="system-ui,sans-serif" font-size="8" fill="${C.muted}" opacity="0.9">③ contact</text>
   <!-- Height indicator -->
   <line x1="348" y1="76" x2="348" y2="240" stroke="${C.blue}" stroke-width="1.5" stroke-dasharray="3,3" opacity="0.6"/>
   <line x1="342" y1="76" x2="354" y2="76" stroke="${C.blue}" stroke-width="1.5"/>
   <text x="353" y="80" font-family="system-ui,sans-serif" font-size="9" fill="${C.blue}">shoulder</text>
   <text x="356" y="91" font-family="system-ui,sans-serif" font-size="9" fill="${C.blue}">height</text>
   <!-- Labels -->
-  <text x="200" y="264" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="${C.text}" text-anchor="middle">High-Bounce Contact — Open Stance</text>
-  <text x="200" y="281" font-family="system-ui,sans-serif" font-size="10" fill="${C.muted}" text-anchor="middle">Shoulder turns, wrist accelerates through ball at shoulder height</text>
+  <text x="200" y="264" font-family="system-ui,sans-serif" font-size="13" font-weight="700" fill="${C.text}" text-anchor="middle">High-Bounce Forehand — Swing Movement</text>
+  <text x="200" y="281" font-family="system-ui,sans-serif" font-size="10" fill="${C.muted}" text-anchor="middle">Hips drive first, shoulders rotate, wrist snaps through ball at shoulder height</text>
 </svg>`;
 
 const DROP_SHOT_SVG = `<svg viewBox="0 0 400 290" xmlns="http://www.w3.org/2000/svg">
