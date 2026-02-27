@@ -966,16 +966,16 @@ export function getLessonByRef(ref: string): Lesson | null {
 
   const activity = LEARN_CONTENT.find((a) => a.id === activityId);
   if (!activity) return null;
-  const module = activity.modules.find((m) => m.id === moduleId);
-  if (!module) return null;
+  const mod = activity.modules.find((m) => m.id === moduleId);
+  if (!mod) return null;
 
-  if (module.type === "variant-select" && rest.length >= 2) {
+  if (mod.type === "variant-select" && rest.length >= 2) {
     const [variantId, lessonId] = rest;
-    const variant = module.variantGroup.variants.find((v) => v.id === variantId);
+    const variant = mod.variantGroup.variants.find((v) => v.id === variantId);
     return variant?.lessons.find((l) => l.id === lessonId) ?? null;
   }
-  if (module.type === "lessons" && rest.length >= 1) {
-    return module.lessons.find((l) => l.id === rest[0]) ?? null;
+  if (mod.type === "lessons" && rest.length >= 1) {
+    return mod.lessons.find((l) => l.id === rest[0]) ?? null;
   }
   return null;
 }

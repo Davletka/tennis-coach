@@ -19,14 +19,14 @@ router = APIRouter(prefix="/api/v1/learn", tags=["learn"])
 @router.get("/progress", response_model=LessonProgressList)
 async def get_progress(user=Depends(get_current_user)):
     """Return all lesson IDs the authenticated user has marked complete."""
-    rows = await db.pool.fetch(
+    rows = await db.get_pool().fetch(
         """
         SELECT lesson_id, activity_id, completed_at
         FROM learn_progress
         WHERE user_id = $1
         ORDER BY completed_at DESC
         """,
-        user["user_id"],
+        user["sub"],
     )
     items = [
         LessonProgressItem(
@@ -49,7 +49,7 @@ async def mark_complete(body: MarkLessonRequest, user=Depends(get_current_user))
     # Extract activity_id from the dot-path prefix
     activity_id = lesson_id.split(".")[0] if "." in lesson_id else lesson_id
 
-    row = await db.pool.fetchrow(
+    row = await db.get_pool().fetchrow(
         """
         INSERT INTO learn_progress (user_id, activity_id, lesson_id)
         VALUES ($1, $2, $3)
@@ -57,7 +57,7 @@ async def mark_complete(body: MarkLessonRequest, user=Depends(get_current_user))
             SET completed_at = NOW()
         RETURNING lesson_id, activity_id, completed_at
         """,
-        user["user_id"],
+        user["sub"],
         activity_id,
         lesson_id,
     )
@@ -71,9 +71,9 @@ async def mark_complete(body: MarkLessonRequest, user=Depends(get_current_user))
 @router.delete("/progress/{lesson_id:path}", status_code=status.HTTP_204_NO_CONTENT)
 async def unmark_complete(lesson_id: str, user=Depends(get_current_user)):
     """Remove a completion record (mark lesson as not done)."""
-    result = await db.pool.execute(
+    result = await db.get_pool().execute(
         "DELETE FROM learn_progress WHERE user_id = $1 AND lesson_id = $2",
-        user["user_id"],
+        user["sub"],
         lesson_id,
     )
     # asyncpg returns "DELETE N" — no error if row didn't exist (idempotent)
