@@ -12,6 +12,7 @@ from api import db
 from api.routes.analysis import router as analysis_router
 from api.routes.auth import router as auth_router
 from api.routes.history import router as history_router
+from api.routes.learn_progress import router as learn_router
 from api.settings import settings
 
 
@@ -42,6 +43,7 @@ def create_app() -> FastAPI:
     application.include_router(analysis_router)
     application.include_router(auth_router)
     application.include_router(history_router)
+    application.include_router(learn_router)
 
     return application
 
