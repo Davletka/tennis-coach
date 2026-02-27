@@ -13,7 +13,7 @@ import logging
 import uuid
 from datetime import datetime
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, File
 
 from api.auth.dependencies import get_current_user
 from api.models import (
@@ -45,6 +45,7 @@ _MAX_REFERENCE_MB = 50
 @router.post("/analyze", response_model=AnalyzeResponse, status_code=202)
 async def create_analysis(
     file: UploadFile = File(...),
+    activity: str = Form("tennis"),
     current_user: dict = Depends(get_current_user),
 ):
     """
@@ -55,7 +56,15 @@ async def create_analysis(
     Same video file (identified by SHA-256) is deduplicated per user — the S3
     upload is skipped and the existing object reused.
     """
+    from activities import get_activity
     import os
+
+    # Validate activity before doing any expensive work
+    try:
+        get_activity(activity)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc))
+
     ext = os.path.splitext(file.filename or "")[1].lower()
     if ext not in _ALLOWED_EXTENSIONS:
         raise HTTPException(
@@ -92,10 +101,10 @@ async def create_analysis(
     # Create Redis job record (user-scoped)
     job_id = str(uuid.uuid4())
     original_filename = file.filename or ""
-    job_store.create_job(job_id, user_id=user_id, original_filename=original_filename)
+    job_store.create_job(job_id, user_id=user_id, original_filename=original_filename, activity=activity)
 
     # Enqueue Celery task; user_id always present (auth is mandatory)
-    run_analysis.delay(job_id, s3_key, original_filename, user_id=user_id)
+    run_analysis.delay(job_id, s3_key, original_filename, user_id=user_id, activity=activity)
 
     return AnalyzeResponse(job_id=job_id, status="pending")
 
@@ -245,6 +254,21 @@ async def get_job_result(job_id: str, current_user: dict = Depends(get_current_u
         for i, m in enumerate(psm_raw)
     ]
 
+    # Load activity config for display metadata
+    from activities import get_activity as _get_activity
+    activity_id = record.get("activity", "tennis")
+    try:
+        activity_cfg = _get_activity(activity_id)
+        activity_display_name = activity_cfg.display_name
+        coaching_labels = activity_cfg.coaching_labels
+        event_singular = activity_cfg.event_singular
+        event_plural = activity_cfg.event_plural
+    except ValueError:
+        activity_display_name = activity_id.capitalize()
+        coaching_labels = {}
+        event_singular = "swing"
+        event_plural = "swings"
+
     # Generate fresh presigned URL for the original video
     input_url = storage.presigned_url(record["input_s3_key"])
 
@@ -258,6 +282,11 @@ async def get_job_result(job_id: str, current_user: dict = Depends(get_current_u
         fps=record["fps"],
         total_source_frames=record["total_source_frames"],
         per_swing_analyses=per_swing_analyses,
+        activity=activity_id,
+        activity_display_name=activity_display_name,
+        coaching_labels=coaching_labels,
+        event_singular=event_singular,
+        event_plural=event_plural,
     )
 
 

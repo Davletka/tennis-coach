@@ -1,17 +1,18 @@
 # CourtCoach
 
-AI-powered tennis coaching app that analyzes uploaded tennis videos using pose detection, renders a live pose overlay on playback, and delivers written coaching feedback via Claude.
+AI-powered sports coaching app that analyzes uploaded videos using pose detection, renders a live pose overlay on playback, and delivers written coaching feedback via Claude. Supports multiple activities (Tennis, Gym Workout) with a pluggable activity system.
 
 ## Features
 
+- **Multi-activity support** — Tennis (swing detection via wrist speed peaks) and Gym Workout (rep detection via joint angle valleys); adding a new sport requires only a single new file in `activities/`
 - **Pose detection** — MediaPipe extracts 33 body landmarks per frame
 - **Joint angle analysis** — elbow, shoulder, and knee angles with mean/min/max/std stats
-- **Swing detection** — wrist speed peaks identify backswing/contact/follow-through events
+- **Event detection** — activity-specific: swing peaks for tennis, joint angle valleys for gym reps
 - **Auto-zoom view** — video is auto-cropped to the player's bounding box using pose landmarks, with smooth lerp tracking
 - **Form diff canvas** — side-by-side diff skeleton colored by deviation from Claude's target angles (green < 15°, yellow 15–30°, red > 30°)
 - **Reference pose overlay** — upload a reference video clip to generate a ghost skeleton (dashed) overlaid on the diff canvas
 - **AI coaching with target angles** — Claude Sonnet generates metrics-referenced feedback across 4 categories and recommends ideal joint angles for the player's shot type
-- **Per-swing breakdown** — each detected swing is analyzed individually; collapsible cards show per-swing metrics (joint angles, wrist speed, torso rotation) and AI coaching; clicking the timestamp chip seeks the video to that swing
+- **Per-event breakdown** — each detected swing/rep is analyzed individually; collapsible cards show per-event metrics (joint angles, peak speed/depth, torso rotation) and AI coaching; clicking the timestamp chip seeks the video to that event
 
 ## Setup
 
@@ -36,7 +37,7 @@ npm run dev
 Open http://localhost:3000. The frontend requires the FastAPI backend running (see below).
 
 1. Sign in with Google (top-right) — required for history tracking and comparisons
-2. Drag-and-drop or browse to select a tennis video (MP4, MOV, or AVI) on the **Analyze** tab
+2. Select the **Activity** (Tennis or Gym Workout) — drag-and-drop or browse to select a video (MP4, MOV, or AVI) on the **Analyze** tab
 3. Click **Analyze Video** — progress is shown while the job runs
 4. View the **side-by-side** result: left canvas shows auto-zoomed video tracking the player; right canvas shows the form diff skeleton colored by deviation from Claude's recommended angles
 5. Use **Play / Pause** and the seek slider to scrub through the video — both canvases update in sync
@@ -204,12 +205,16 @@ tennis-coach/
 │   │   └── history.py      # SQL service layer (players + sessions)
 │   └── tasks/
 │       └── analyze.py      # Celery task: full pipeline + Postgres persist
+├── activities/
+│   ├── __init__.py         # ActivityConfig dataclass + plugin registry
+│   ├── tennis.py           # Tennis: swing detection via wrist speed peaks
+│   └── gym.py              # Gym: rep detection via joint angle valleys
 ├── pipeline/
 │   ├── video_io.py         # Frame extraction + H.264 reassembly
 │   ├── pose_detector.py    # MediaPipe wrapper
-│   ├── metrics.py          # Joint angles, swing detection, aggregation
+│   ├── metrics.py          # Joint angles, event detection, aggregation
 │   ├── annotator.py        # Skeleton overlay, angle labels, wrist trail
-│   ├── coach.py            # Claude prompt builder + response parser
+│   ├── coach.py            # Claude prompt builder + tool_use response parser
 │   └── compare_coach.py    # Delta coaching between two sessions
 └── utils/
     └── math_helpers.py     # angle_between_three_points, find_peaks, etc.

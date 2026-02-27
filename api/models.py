@@ -4,7 +4,7 @@ Pydantic request/response models for the CourtCoach API.
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 from pydantic import BaseModel
 
@@ -171,6 +171,12 @@ class JobResultResponse(BaseModel):
     fps: float
     total_source_frames: int
     per_swing_analyses: List[PerSwingAnalysis] = []
+    # Activity metadata — used by frontend to render dynamic labels
+    activity: str = "tennis"
+    activity_display_name: str = "Tennis"
+    coaching_labels: Dict[str, str] = {}
+    event_singular: str = "swing"
+    event_plural: str = "swings"
 
 
 # ---------------------------------------------------------------------------

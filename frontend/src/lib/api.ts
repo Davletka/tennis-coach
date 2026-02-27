@@ -133,6 +133,11 @@ export interface PerSwingAnalysis {
   coaching: SwingCoachingResult;
 }
 
+export interface ActivityChoice {
+  id: string;
+  display_name: string;
+}
+
 export interface JobResultResponse {
   job_id: string;
   status: JobStatus;
@@ -143,6 +148,12 @@ export interface JobResultResponse {
   fps: number;
   total_source_frames: number;
   per_swing_analyses: PerSwingAnalysis[];
+  // Activity metadata
+  activity: string;
+  activity_display_name: string;
+  coaching_labels: Record<string, string>;
+  event_singular: string;
+  event_plural: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -225,9 +236,14 @@ export interface CompareResponse {
 // Fetch helpers — unauthenticated
 // ---------------------------------------------------------------------------
 
-export async function uploadVideo(file: File, token: string): Promise<AnalyzeResponse> {
+export async function uploadVideo(
+  file: File,
+  token: string,
+  activity = "tennis",
+): Promise<AnalyzeResponse> {
   const form = new FormData();
   form.append("file", file);
+  form.append("activity", activity);
 
   const res = await fetch(`${API_BASE}/api/v1/analyze`, {
     method: "POST",

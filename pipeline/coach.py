@@ -37,13 +37,13 @@ RULES:
 
 _COACHING_TOOL: dict = {
     "name": "submit_coaching_report",
-    "description": "Submit a structured tennis coaching report based on biomechanical analysis.",
+    "description": "Submit a structured coaching report based on biomechanical analysis.",
     "input_schema": {
         "type": "object",
         "properties": {
             "swing_mechanics": {
                 "type": "string",
-                "description": "Detailed swing mechanics analysis referencing specific joint angles.",
+                "description": "Detailed mechanics analysis referencing specific joint angles.",
             },
             "footwork_movement": {
                 "type": "string",
@@ -91,13 +91,13 @@ _COACHING_TOOL: dict = {
 
 _SWING_TOOL: dict = {
     "name": "submit_swing_coaching",
-    "description": "Submit structured coaching feedback for a single tennis swing.",
+    "description": "Submit structured coaching feedback for a single detected event.",
     "input_schema": {
         "type": "object",
         "properties": {
             "quick_note": {
                 "type": "string",
-                "description": "One-sentence summary of this specific swing.",
+                "description": "One-sentence summary of this specific event.",
             },
             "swing_mechanics": {"type": "string"},
             "footwork_movement": {"type": "string"},
@@ -106,7 +106,7 @@ _SWING_TOOL: dict = {
             "top_3_priorities": {
                 "type": "array",
                 "items": {"type": "string"},
-                "description": "Top 3 priorities for this swing.",
+                "description": "Top 3 priorities for this event.",
                 "minItems": 1,
                 "maxItems": 3,
             },
@@ -153,9 +153,14 @@ def _build_user_prompt(
     agg: AggregatedMetrics,
     fps: float,
     total_source_frames: int,
+    activity_cfg=None,
 ) -> str:
     duration_s = total_source_frames / max(fps, 1.0)
     detection_pct = agg.detection_rate * 100
+
+    # Use activity-specific labels when available
+    event_plural = activity_cfg.event_plural if activity_cfg else "swings"
+    event_metric_label = activity_cfg.event_metric_label if activity_cfg else "Wrist speeds at peaks"
 
     low_detection_warning = ""
     if agg.detection_rate < MIN_DETECTION_RATE:
@@ -175,7 +180,7 @@ def _build_user_prompt(
         f"- Duration: {duration_s:.1f}s",
         f"- Frames analyzed: {agg.frames_analyzed}",
         f"- Pose detection rate: {detection_pct:.0f}%",
-        f"- Swing events detected: {agg.swing_count}",
+        f"- {event_plural.capitalize()} detected: {agg.swing_count}",
         low_detection_warning,
         "",
         "## Joint Angle Statistics (mean / min / max / std)",
@@ -191,8 +196,8 @@ def _build_user_prompt(
         f"- Stance width (normalized to hip width, mean): {fmt(agg.stance_width_mean, '')}",
         f"- CoM lateral range: {fmt(agg.com_x_range, ' (normalized 0-1)')}",
         "",
-        "## Swing Events",
-        f"- Wrist speeds at peaks: {swing_speeds_str}",
+        f"## {event_plural.capitalize()}",
+        f"- {event_metric_label}: {swing_speeds_str}",
     ]
 
     return "\n".join(lines)
@@ -202,12 +207,14 @@ def _fmt(v: Optional[float]) -> str:
     return f"{v:.1f}" if v is not None else "?"
 
 
-def _build_swing_prompt(psm, fps: float) -> str:
+def _build_swing_prompt(psm, fps: float, activity_cfg=None) -> str:
     t = psm.peak_frame / max(fps, 1.0)
+    event_singular = activity_cfg.event_singular if activity_cfg else "swing"
+    event_metric_label = activity_cfg.event_metric_label if activity_cfg else "Peak wrist speed"
     return "\n".join([
-        f"Swing {psm.swing_index + 1} (frame {psm.peak_frame}, t={t:.1f}s)",
+        f"{event_singular.capitalize()} {psm.swing_index + 1} (frame {psm.peak_frame}, t={t:.1f}s)",
         f"Window: frames {psm.window_start_frame}–{psm.window_end_frame}",
-        f"Peak wrist speed: {psm.peak_wrist_speed:.4f}",
+        f"{event_metric_label}: {psm.peak_wrist_speed:.4f}",
         f"Right elbow:    mean={_fmt(psm.right_elbow.mean)}° min={_fmt(psm.right_elbow.min)}° max={_fmt(psm.right_elbow.max)}°",
         f"Left elbow:     mean={_fmt(psm.left_elbow.mean)}° min={_fmt(psm.left_elbow.min)}° max={_fmt(psm.left_elbow.max)}°",
         f"Right shoulder: mean={_fmt(psm.right_shoulder.mean)}° min={_fmt(psm.right_shoulder.min)}° max={_fmt(psm.right_shoulder.max)}°",
@@ -230,19 +237,25 @@ def get_coaching_feedback(
     total_source_frames: int,
     api_key: str,
     model: str = "claude-sonnet-4-6",
+    activity_cfg=None,
 ) -> CoachingReport:
     """
     Call Claude API and return a CoachingReport.
     Uses tool_use to guarantee a valid structured response.
+
+    ``activity_cfg`` is an ``ActivityConfig`` instance used to select the
+    correct system prompt and event terminology.  Falls back to the built-in
+    tennis defaults when omitted.
     """
-    user_prompt = _build_user_prompt(agg, fps, total_source_frames)
+    user_prompt = _build_user_prompt(agg, fps, total_source_frames, activity_cfg=activity_cfg)
+    system = activity_cfg.system_prompt if activity_cfg else SYSTEM_PROMPT
 
     try:
         client = anthropic.Anthropic(api_key=api_key)
         message = client.messages.create(
             model=model,
             max_tokens=2048,
-            system=SYSTEM_PROMPT,
+            system=system,
             tools=[_COACHING_TOOL],
             tool_choice={"type": "tool", "name": "submit_coaching_report"},
             messages=[{"role": "user", "content": user_prompt}],
@@ -286,13 +299,14 @@ def get_coaching_feedback(
     return report
 
 
-def _get_single_swing_coaching(psm, fps: float, client, model: str) -> SwingCoaching:
-    user_prompt = _build_swing_prompt(psm, fps)
+def _get_single_swing_coaching(psm, fps: float, client, model: str, activity_cfg=None) -> SwingCoaching:
+    user_prompt = _build_swing_prompt(psm, fps, activity_cfg=activity_cfg)
+    system = activity_cfg.per_event_system_prompt if activity_cfg else PER_SWING_SYSTEM_PROMPT
     try:
         msg = client.messages.create(
             model=model,
             max_tokens=1024,
-            system=PER_SWING_SYSTEM_PROMPT,
+            system=system,
             tools=[_SWING_TOOL],
             tool_choice={"type": "tool", "name": "submit_swing_coaching"},
             messages=[{"role": "user", "content": user_prompt}],
@@ -331,10 +345,12 @@ def get_per_swing_coaching(
     api_key: str,
     model: str = "claude-sonnet-4-6",
     on_swing_done: Optional[object] = None,
+    activity_cfg=None,
 ) -> List[SwingCoaching]:
     """
-    Call Claude once per swing so progress can be reported after each one.
-    on_swing_done(done: int, total: int) is called after each swing completes.
+    Call Claude once per event so progress can be reported after each one.
+    on_swing_done(done: int, total: int) is called after each event completes.
+    ``activity_cfg`` selects the correct per-event system prompt and labels.
     """
     if not per_swing_metrics:
         return []
@@ -342,7 +358,7 @@ def get_per_swing_coaching(
     client = anthropic.Anthropic(api_key=api_key)
     results = []
     for psm in per_swing_metrics:
-        results.append(_get_single_swing_coaching(psm, fps, client, model))
+        results.append(_get_single_swing_coaching(psm, fps, client, model, activity_cfg=activity_cfg))
         if on_swing_done is not None:
             on_swing_done(len(results), len(per_swing_metrics))
     return results

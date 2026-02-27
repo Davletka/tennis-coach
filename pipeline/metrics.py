@@ -1,10 +1,10 @@
 """
-Joint angle computation, swing phase detection, and metric aggregation.
+Joint angle computation, event detection, and metric aggregation.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import numpy as np
 
@@ -283,10 +283,41 @@ def compute_per_swing_metrics(
     return result
 
 
+def _default_detect_events(frame_metrics: List[FrameMetrics]) -> List[SwingEvent]:
+    """Default event detection: tennis swing peaks via combined wrist speed."""
+    right_speeds: List[Optional[float]] = [fm.right_wrist_speed for fm in frame_metrics]
+    left_speeds: List[Optional[float]] = [fm.left_wrist_speed for fm in frame_metrics]
+
+    combined_speeds: List[Optional[float]] = []
+    for rs, ls in zip(right_speeds, left_speeds):
+        vals = [v for v in (rs, ls) if v is not None]
+        combined_speeds.append(max(vals) if vals else None)
+
+    peak_indices = find_peaks(
+        combined_speeds,
+        threshold=WRIST_SPEED_THRESHOLD,
+        min_distance=MIN_SWING_INTERVAL,
+    )
+
+    events = []
+    for idx in peak_indices:
+        speed = combined_speeds[idx]
+        com_x = frame_metrics[idx].com_x if idx < len(frame_metrics) else None
+        events.append(SwingEvent(frame_index=idx, wrist_speed=speed or 0.0, com_x=com_x))
+    return events
+
+
 def aggregate_metrics(
     frame_metrics: List[FrameMetrics],
     pose_results: List[Optional[LandmarkResult]],
+    detect_events_fn: Optional[Callable] = None,
 ) -> AggregatedMetrics:
+    """Aggregate per-frame metrics into a summary.
+
+    ``detect_events_fn`` receives the full ``frame_metrics`` list and returns
+    ``List[SwingEvent]``.  If omitted, the default tennis wrist-speed detector
+    is used (backward-compatible).
+    """
     agg = AggregatedMetrics()
     agg.frames_analyzed = len(frame_metrics)
     agg.pose_detected_frames = sum(1 for r in pose_results if r is not None)
@@ -310,28 +341,8 @@ def aggregate_metrics(
     if com_vals:
         agg.com_x_range = float(max(com_vals) - min(com_vals))
 
-    # Swing event detection via right wrist speed peaks
-    right_speeds: List[Optional[float]] = [fm.right_wrist_speed for fm in frame_metrics]
-    left_speeds: List[Optional[float]] = [fm.left_wrist_speed for fm in frame_metrics]
-
-    # Combine both wrists — take the max at each frame
-    combined_speeds: List[Optional[float]] = []
-    for rs, ls in zip(right_speeds, left_speeds):
-        vals = [v for v in (rs, ls) if v is not None]
-        combined_speeds.append(max(vals) if vals else None)
-
-    peak_indices = find_peaks(
-        combined_speeds,
-        threshold=WRIST_SPEED_THRESHOLD,
-        min_distance=MIN_SWING_INTERVAL,
-    )
-
-    for idx in peak_indices:
-        speed = combined_speeds[idx]
-        com_x = frame_metrics[idx].com_x if idx < len(frame_metrics) else None
-        agg.swing_events.append(
-            SwingEvent(frame_index=idx, wrist_speed=speed or 0.0, com_x=com_x)
-        )
-
+    # Event detection — delegate to provided function or use default tennis detector
+    detector = detect_events_fn if detect_events_fn is not None else _default_detect_events
+    agg.swing_events = detector(frame_metrics)
     agg.swing_count = len(agg.swing_events)
     return agg

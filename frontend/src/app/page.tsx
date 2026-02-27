@@ -121,14 +121,14 @@ function useCourtCoach(token: string | null) {
   );
 
   const analyze = useCallback(
-    async (f: File) => {
+    async (f: File, activity = "tennis") => {
       if (!tokenRef.current) {
         dispatch({ type: "FAIL", error: "Please sign in to analyze a video." });
         return;
       }
       dispatch({ type: "UPLOAD_START" });
       try {
-        const { job_id } = await uploadVideo(f, tokenRef.current);
+        const { job_id } = await uploadVideo(f, tokenRef.current, activity);
         dispatch({ type: "UPLOAD_DONE", jobId: job_id });
         scheduleNextPoll(job_id);
       } catch (err) {
@@ -479,14 +479,21 @@ function ProgressBar({
   );
 }
 
-const COACHING_TABS = [
-  { key: "swing_mechanics", label: "Swing" },
-  { key: "footwork_movement", label: "Footwork" },
-  { key: "stance_posture", label: "Stance" },
-  { key: "shot_selection_tactics", label: "Tactics" },
+const DEFAULT_COACHING_LABELS: Record<string, string> = {
+  swing_mechanics: "Swing",
+  footwork_movement: "Footwork",
+  stance_posture: "Stance",
+  shot_selection_tactics: "Tactics",
+};
+
+const COACHING_KEYS = [
+  "swing_mechanics",
+  "footwork_movement",
+  "stance_posture",
+  "shot_selection_tactics",
 ] as const;
 
-type CoachingKey = (typeof COACHING_TABS)[number]["key"];
+type CoachingKey = (typeof COACHING_KEYS)[number];
 
 // If old fallback stored raw JSON in swing_mechanics, re-parse it transparently.
 function normalizeCoachingReport(report: {
@@ -513,6 +520,7 @@ function normalizeCoachingReport(report: {
 
 function CoachingPanel({
   report,
+  labels = {},
 }: {
   report: {
     swing_mechanics: string;
@@ -521,14 +529,16 @@ function CoachingPanel({
     shot_selection_tactics: string;
     top_3_priorities: string[];
   };
+  labels?: Record<string, string>;
 }) {
   const [activeTab, setActiveTab] = useState<CoachingKey>("swing_mechanics");
   report = normalizeCoachingReport(report);
+  const resolvedLabels = { ...DEFAULT_COACHING_LABELS, ...labels };
 
   return (
     <div className="rounded-xl bg-gray-900 border border-gray-700">
       <div className="flex border-b border-gray-700">
-        {COACHING_TABS.map(({ key, label }) => (
+        {COACHING_KEYS.map((key) => (
           <button
             key={key}
             onClick={() => setActiveTab(key)}
@@ -539,7 +549,7 @@ function CoachingPanel({
                 : "text-gray-400 hover:text-gray-200",
             ].join(" ")}
           >
-            {label}
+            {resolvedLabels[key]}
           </button>
         ))}
       </div>
@@ -672,6 +682,7 @@ function drawDiff(
   showLabels: boolean,
   swingFrames: Set<number>,
   fi: number,
+  eventLabel = "EVENT",
 ) {
   const ctx = canvas.getContext("2d");
   if (!ctx) return;
@@ -780,7 +791,7 @@ function drawDiff(
     ctx.shadowBlur = 0;
   }
 
-  // Swing indicator
+  // Event indicator
   if (swingFrames.has(fi)) {
     ctx.strokeStyle = "rgb(255,165,0)";
     ctx.lineWidth = 3;
@@ -788,7 +799,8 @@ function drawDiff(
     ctx.font = "bold 11px sans-serif";
     ctx.fillStyle = "rgb(255,165,0)";
     ctx.shadowBlur = 0;
-    ctx.fillText("SWING", W - 58, 18);
+    const labelW = eventLabel.length * 7 + 8;
+    ctx.fillText(eventLabel, W - labelW, 18);
   }
 }
 
@@ -796,28 +808,24 @@ function drawDiff(
 // Per-swing breakdown card
 // ---------------------------------------------------------------------------
 
-const SWING_COACHING_TABS = [
-  { key: "swing_mechanics", label: "Mechanics" },
-  { key: "footwork_movement", label: "Footwork" },
-  { key: "stance_posture", label: "Stance" },
-  { key: "shot_selection_tactics", label: "Tactics" },
-] as const;
-
-type SwingCoachingKey = (typeof SWING_COACHING_TABS)[number]["key"];
+type SwingCoachingKey = CoachingKey;
 
 function SwingCard({
   analysis,
   swingNumber,
   fps,
   onSeek,
+  labels = {},
 }: {
   analysis: PerSwingAnalysis;
   swingNumber: number;
   fps: number;
   onSeek: (t: number) => void;
+  labels?: Record<string, string>;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<SwingCoachingKey>("swing_mechanics");
+  const resolvedLabels = { ...DEFAULT_COACHING_LABELS, ...labels };
 
   const peakTimeSecs = analysis.peak_frame / Math.max(fps, 1);
   const m = analysis.metrics;
@@ -904,7 +912,7 @@ function SwingCard({
           {/* Tabbed coaching breakdown */}
           <div className="rounded-lg border border-gray-700">
             <div className="flex border-b border-gray-700">
-              {SWING_COACHING_TABS.map(({ key, label }) => (
+              {COACHING_KEYS.map((key) => (
                 <button
                   key={key}
                   onClick={() => setActiveTab(key)}
@@ -915,7 +923,7 @@ function SwingCard({
                       : "text-gray-400 hover:text-gray-200",
                   ].join(" ")}
                 >
-                  {label}
+                  {resolvedLabels[key]}
                 </button>
               ))}
             </div>
@@ -1080,7 +1088,8 @@ function ResultView({
       }
 
       // Draw diff skeleton on right canvas
-      drawDiff(dc, fd, bbox, result, refPose, showGhost, showLabels, swingFrames, fi);
+      const evtLabel = (result.event_singular ?? "swing").toUpperCase();
+      drawDiff(dc, fd, bbox, result, refPose, showGhost, showLabels, swingFrames, fi, evtLabel);
     }
 
     rafId = requestAnimationFrame(tick);
@@ -1343,7 +1352,7 @@ function ResultView({
       {result.per_swing_analyses.length > 0 && (
         <div className="space-y-2">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
-            Per-Swing Breakdown ({result.per_swing_analyses.length} swing{result.per_swing_analyses.length !== 1 ? "s" : ""})
+            Per-{(result.event_singular ?? "swing").charAt(0).toUpperCase() + (result.event_singular ?? "swing").slice(1)} Breakdown ({result.per_swing_analyses.length} {result.per_swing_analyses.length !== 1 ? (result.event_plural ?? "swings") : (result.event_singular ?? "swing")})
           </h2>
           {result.per_swing_analyses.map((a) => (
             <SwingCard
@@ -1352,6 +1361,7 @@ function ResultView({
               swingNumber={a.swing_index + 1}
               fps={result.fps}
               onSeek={seekTo}
+              labels={result.coaching_labels}
             />
           ))}
         </div>
@@ -1361,7 +1371,7 @@ function ResultView({
         <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
           Coaching Feedback
         </h2>
-        <CoachingPanel report={result.coaching_report} />
+        <CoachingPanel report={result.coaching_report} labels={result.coaching_labels} />
       </div>
 
       {result.coaching_report.top_3_priorities.length > 0 && (
@@ -2396,10 +2406,16 @@ function LandingPage({ onSignIn }: { onSignIn: () => void }) {
 // Main page
 // ---------------------------------------------------------------------------
 
+const ACTIVITY_CHOICES = [
+  { id: "tennis", label: "Tennis" },
+  { id: "gym", label: "Gym Workout" },
+];
+
 export default function Home() {
   const { token, user, loading: authLoading, signIn, signOut } = useAuth();
   const { state, file, setFile, analyze, retry, reset } = useCourtCoach(token);
   const [activeTab, setActiveTab] = useState<Tab>("analyze");
+  const [selectedActivity, setSelectedActivity] = useState("tennis");
 
   const handleFile = useCallback((f: File) => setFile(f), [setFile]);
 
@@ -2461,10 +2477,32 @@ export default function Home() {
             <LandingPage onSignIn={signIn} />
           ) : (
             <div className="space-y-6 rounded-2xl bg-gray-900 p-6 shadow-xl ring-1 ring-gray-700/50">
+              {/* Activity selector */}
+              <div>
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500">
+                  Activity
+                </p>
+                <div className="flex gap-2">
+                  {ACTIVITY_CHOICES.map(({ id, label }) => (
+                    <button
+                      key={id}
+                      onClick={() => setSelectedActivity(id)}
+                      className={[
+                        "rounded-lg border px-4 py-1.5 text-sm font-medium transition-colors",
+                        selectedActivity === id
+                          ? "border-green-600 bg-green-900/40 text-green-300"
+                          : "border-gray-600 text-gray-400 hover:border-gray-400 hover:text-gray-200",
+                      ].join(" ")}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              </div>
               <UploadZone
                 file={file}
                 onFile={handleFile}
-                onAnalyze={() => file && analyze(file)}
+                onAnalyze={() => file && analyze(file, selectedActivity)}
                 disabled={isActive}
               />
               {(state.phase === "uploading" || state.phase === "polling") && (

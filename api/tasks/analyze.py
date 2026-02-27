@@ -106,6 +106,7 @@ def run_analysis(
     original_filename: str,
     user_id: str = None,
     resume_from: str = "start",
+    activity: str = "tennis",
 ) -> None:
     """
     Full analysis pipeline as a Celery task.
@@ -124,6 +125,9 @@ def run_analysis(
     from pipeline.coach import get_coaching_feedback
     from config import VISIBILITY_THRESHOLD
     from api.settings import settings
+    from activities import get_activity
+
+    activity_cfg = get_activity(activity)
 
     def _progress(pct: int, msg: str) -> None:
         job_store.update_job(job_id, status="running", progress=pct, message=msg)
@@ -133,27 +137,28 @@ def run_analysis(
         # Fast path: skip straight to coaching if checkpoint is available
         # ----------------------------------------------------------------
         if resume_from == "coaching":
-            _progress(75, "Generating per-swing analysis")
+            event_plural = activity_cfg.event_plural
+            _progress(75, f"Generating per-{activity_cfg.event_singular} analysis")
             job = job_store.get_job(job_id)
             agg = _metrics_from_dict(job["metrics"])
             fps = job["fps"]
             total_source_frames = job["total_source_frames"]
 
-            # Re-run per-swing coaching if metrics are available
+            # Re-run per-event coaching if metrics are available
             from pipeline.coach import get_per_swing_coaching
             per_swing_raw = job.get("per_swing_metrics", [])
             if per_swing_raw:
                 per_swing_list = [_per_swing_from_dict(d) for d in per_swing_raw]
-                n_swings = len(per_swing_list)
+                n_events = len(per_swing_list)
 
                 def _swing_cb_retry(done: int, total: int) -> None:
                     pct = 75 + int((done / total) * 13)
                     job_store.update_job(job_id, status="running", progress=pct,
-                                        message=f"Generating per-swing analysis ({done}/{total} swings)")
+                                        message=f"Generating per-{activity_cfg.event_singular} analysis ({done}/{total} {event_plural})")
 
                 swing_coaching_list = get_per_swing_coaching(
                     per_swing_list, fps, api_key=settings.anthropic_api_key,
-                    on_swing_done=_swing_cb_retry,
+                    on_swing_done=_swing_cb_retry, activity_cfg=activity_cfg,
                 )
                 per_swing_coaching_dicts = [
                     {
@@ -175,6 +180,7 @@ def run_analysis(
                 fps,
                 total_source_frames,
                 api_key=settings.anthropic_api_key,
+                activity_cfg=activity_cfg,
             )
 
             coaching_dict = {
@@ -273,11 +279,18 @@ def run_analysis(
                 frame_metrics.append(fm)
                 prev = result
 
-            agg = aggregate_metrics(frame_metrics, pose_results)
+            agg = aggregate_metrics(
+                frame_metrics, pose_results,
+                detect_events_fn=activity_cfg.detect_events,
+            )
 
-            # Compute per-swing metrics
+            # Compute per-event metrics using activity window sizes
             from pipeline.metrics import compute_per_swing_metrics
-            per_swing_list = compute_per_swing_metrics(frame_metrics, agg.swing_events)
+            per_swing_list = compute_per_swing_metrics(
+                frame_metrics, agg.swing_events,
+                window_before=activity_cfg.window_before,
+                window_after=activity_cfg.window_after,
+            )
 
             # Checkpoint metrics before annotation (enables coaching-only retry)
             metrics_dict = {
@@ -355,19 +368,21 @@ def run_analysis(
             job_store.update_job(job_id, frame_data=frame_data)
 
             # ----------------------------------------------------------------
-            # 6. Per-swing Claude coaching
+            # 6. Per-event Claude coaching
             # ----------------------------------------------------------------
-            _progress(75, "Generating per-swing analysis (0/{} swings)".format(len(per_swing_list)))
+            event_singular = activity_cfg.event_singular
+            event_plural = activity_cfg.event_plural
+            _progress(75, f"Generating per-{event_singular} analysis (0/{len(per_swing_list)} {event_plural})")
             from pipeline.coach import get_per_swing_coaching
 
             def _swing_cb(done: int, total: int) -> None:
                 pct = 75 + int((done / total) * 13)
                 job_store.update_job(job_id, status="running", progress=pct,
-                                     message=f"Generating per-swing analysis ({done}/{total} swings)")
+                                     message=f"Generating per-{event_singular} analysis ({done}/{total} {event_plural})")
 
             swing_coaching_list = get_per_swing_coaching(
                 per_swing_list, fps, api_key=settings.anthropic_api_key,
-                on_swing_done=_swing_cb,
+                on_swing_done=_swing_cb, activity_cfg=activity_cfg,
             )
             per_swing_coaching_dicts = [
                 {
@@ -392,6 +407,7 @@ def run_analysis(
                 fps,
                 total_source_frames,
                 api_key=settings.anthropic_api_key,
+                activity_cfg=activity_cfg,
             )
 
             coaching_dict = {
