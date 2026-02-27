@@ -13,7 +13,11 @@ const BASE_URL = "http://localhost:3000";
 const SCREENSHOTS_DIR = path.join(__dirname, "..", "screenshots");
 
 const routes = [
-  { path: "/", name: "home" },
+  { path: "/analyze",  name: "analyze"  },
+  { path: "/history",  name: "history"  },
+  { path: "/compare",  name: "compare"  },
+  { path: "/progress", name: "progress" },
+  { path: "/learn",    name: "learn"    },
 ];
 
 const viewports = [
@@ -73,8 +77,8 @@ async function main() {
       try {
         await page.setViewport({ width: vp.width, height: vp.height });
         await page.goto(`${BASE_URL}${route.path}`, { waitUntil: "networkidle2", timeout: 20000 });
-        // Wait for any loading spinners to clear
-        await new Promise((r) => setTimeout(r, 600));
+        // Wait for React hydration + auth context to settle
+        await new Promise((r) => setTimeout(r, 2000));
         await page.screenshot({ path: outPath, fullPage: true });
         console.log(`  ✓ ${filename}`);
         captured++;
