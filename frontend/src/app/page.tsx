@@ -487,6 +487,29 @@ const COACHING_TABS = [
 
 type CoachingKey = (typeof COACHING_TABS)[number]["key"];
 
+// If old fallback stored raw JSON in swing_mechanics, re-parse it transparently.
+function normalizeCoachingReport(report: {
+  swing_mechanics: string;
+  footwork_movement: string;
+  stance_posture: string;
+  shot_selection_tactics: string;
+  top_3_priorities: string[];
+}) {
+  const raw = report.swing_mechanics ?? "";
+  if (!raw.trimStart().startsWith("{")) return report;
+  try {
+    const start = raw.indexOf("{");
+    const end = raw.lastIndexOf("}") + 1;
+    const parsed = JSON.parse(raw.slice(start, end));
+    if (parsed && typeof parsed === "object" && "swing_mechanics" in parsed) {
+      return { ...report, ...parsed };
+    }
+  } catch {
+    // not valid JSON — leave as-is
+  }
+  return report;
+}
+
 function CoachingPanel({
   report,
 }: {
@@ -499,6 +522,7 @@ function CoachingPanel({
   };
 }) {
   const [activeTab, setActiveTab] = useState<CoachingKey>("swing_mechanics");
+  report = normalizeCoachingReport(report);
 
   return (
     <div className="rounded-xl bg-gray-900 border border-gray-700">
@@ -1124,6 +1148,37 @@ function SessionCard({
   const [expanded, setExpanded] = useState(false);
   const [confirming, setConfirming] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const inputVideoRef = useRef<HTMLVideoElement>(null);
+  const annotatedVideoRef = useRef<HTMLVideoElement>(null);
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(0);
+
+  function syncVideos(master: HTMLVideoElement, other: HTMLVideoElement) {
+    if (Math.abs(other.currentTime - master.currentTime) > 0.1) {
+      other.currentTime = master.currentTime;
+    }
+  }
+
+  function togglePlay() {
+    const a = inputVideoRef.current;
+    const b = annotatedVideoRef.current;
+    if (!a || !b) return;
+    if (playing) {
+      a.pause(); b.pause();
+    } else {
+      b.currentTime = a.currentTime;
+      a.play(); b.play();
+    }
+    setPlaying(!playing);
+  }
+
+  function handleSeek(e: React.ChangeEvent<HTMLInputElement>) {
+    const t = parseFloat(e.target.value);
+    if (inputVideoRef.current) inputVideoRef.current.currentTime = t;
+    if (annotatedVideoRef.current) annotatedVideoRef.current.currentTime = t;
+    setCurrentTime(t);
+  }
 
   async function handleDelete(e: React.MouseEvent) {
     e.stopPropagation();
@@ -1190,6 +1245,63 @@ function SessionCard({
 
       {expanded && (
         <div className="space-y-4 border-t border-gray-700 p-4">
+          {/* Side-by-side video playback */}
+          {session.input_video_url && session.annotated_video_url && (
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
+                Playback
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <div>
+                  <p className="mb-1 text-xs text-gray-500 text-center">Original</p>
+                  <video
+                    ref={inputVideoRef}
+                    src={session.input_video_url}
+                    className="w-full rounded-lg bg-black"
+                    preload="metadata"
+                    muted
+                    onLoadedMetadata={(e) => setDuration((e.target as HTMLVideoElement).duration)}
+                    onTimeUpdate={(e) => {
+                      const t = (e.target as HTMLVideoElement).currentTime;
+                      setCurrentTime(t);
+                      if (annotatedVideoRef.current) syncVideos(e.target as HTMLVideoElement, annotatedVideoRef.current);
+                    }}
+                    onEnded={() => setPlaying(false)}
+                  />
+                </div>
+                <div>
+                  <p className="mb-1 text-xs text-gray-500 text-center">Annotated</p>
+                  <video
+                    ref={annotatedVideoRef}
+                    src={session.annotated_video_url}
+                    className="w-full rounded-lg bg-black"
+                    preload="metadata"
+                    muted
+                  />
+                </div>
+              </div>
+              <div className="mt-2 flex items-center gap-3">
+                <button
+                  onClick={togglePlay}
+                  className="flex-shrink-0 rounded-md bg-gray-700 px-3 py-1 text-xs font-medium text-white hover:bg-gray-600"
+                >
+                  {playing ? "Pause" : "Play"}
+                </button>
+                <input
+                  type="range"
+                  min={0}
+                  max={duration || 1}
+                  step={0.033}
+                  value={currentTime}
+                  onChange={handleSeek}
+                  className="h-1.5 w-full cursor-pointer accent-green-400"
+                />
+                <span className="flex-shrink-0 text-xs tabular-nums text-gray-500">
+                  {Math.floor(currentTime / 60)}:{String(Math.floor(currentTime % 60)).padStart(2, "0")}
+                </span>
+              </div>
+            </div>
+          )}
           <div>
             <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-gray-400">
               Coaching Feedback
