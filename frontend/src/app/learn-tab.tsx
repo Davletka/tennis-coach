@@ -42,8 +42,21 @@ const HighBounceForehand3D = dynamic(
   },
 );
 
+const SquatScene3D = dynamic(
+  () => import("@/components/scenes/SquatScene3D"),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-80 rounded-xl border border-slate-200 bg-slate-50 flex items-center justify-center">
+        <span className="text-sm text-slate-400">Loading 3D scene…</span>
+      </div>
+    ),
+  },
+);
+
 const SCENE_REGISTRY: Record<string, React.ComponentType<{ caption?: string }>> = {
   "high-bounce-forehand": HighBounceForehand3D,
+  "barbell-back-squat": SquatScene3D,
 };
 
 // ---------------------------------------------------------------------------

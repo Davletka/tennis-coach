@@ -921,7 +921,7 @@ const GYM: LearnActivity = {
                 description: "The king of lower-body exercises.",
                 difficulty: "intermediate",
                 content: [
-                  { type: "svg", svg: SQUAT_SVG, caption: "Thighs reach at least parallel to the floor; knees track in line with toes." },
+                  { type: "3d-scene", sceneId: "barbell-back-squat", caption: "High-bar back squat — controlled descent to parallel, then drive through the full foot. Drag to rotate." },
                   { type: "section-header", text: "Setup & Bracing" },
                   { type: "text", text: "Set the bar on your upper traps (high bar) or across the rear delts (low bar). Before unracking, take a big breath into your belly, brace your core as if about to take a punch, and squeeze the bar hard to engage your lats. Step back in two steps and set your stance." },
                   { type: "key-points", points: [
