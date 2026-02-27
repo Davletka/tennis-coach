@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { useRouter, usePathname } from "next/navigation";
 import type React from "react";
 import {
   LEARN_CONTENT,
@@ -59,6 +60,48 @@ type LearnView =
   | { screen: "plan-detail"; activityId: string; moduleId: string; planId: string }
   | { screen: "direct-lessons"; activityId: string; moduleId: string }
   | { screen: "direct-lesson"; activityId: string; moduleId: string; lessonId: string };
+
+// ---------------------------------------------------------------------------
+// URL ↔ view helpers
+// ---------------------------------------------------------------------------
+
+function slugToView(slug: string[]): LearnView {
+  const [activityId, moduleId, thirdId, fourthId] = slug;
+  if (!activityId) return { screen: "sports" };
+  const activity = LEARN_CONTENT.find((a) => a.id === activityId);
+  if (!activity) return { screen: "sports" };
+  if (!moduleId) return { screen: "modules", activityId };
+  const mod = activity.modules.find((m) => m.id === moduleId);
+  if (!mod) return { screen: "modules", activityId };
+  if (!thirdId) {
+    if (mod.type === "variant-select") return { screen: "variants", activityId, moduleId };
+    if (mod.type === "plans") return { screen: "plans", activityId, moduleId };
+    return { screen: "direct-lessons", activityId, moduleId };
+  }
+  if (mod.type === "variant-select") {
+    if (!fourthId) return { screen: "lessons", activityId, moduleId, variantId: thirdId };
+    return { screen: "lesson", activityId, moduleId, variantId: thirdId, lessonId: fourthId };
+  }
+  if (mod.type === "plans") {
+    return { screen: "plan-detail", activityId, moduleId, planId: thirdId };
+  }
+  return { screen: "direct-lesson", activityId, moduleId, lessonId: thirdId };
+}
+
+function viewToPath(v: LearnView): string {
+  switch (v.screen) {
+    case "sports": return "";
+    case "modules": return v.activityId;
+    case "variants": return `${v.activityId}/${v.moduleId}`;
+    case "lessons": return `${v.activityId}/${v.moduleId}/${v.variantId}`;
+    case "lesson": return `${v.activityId}/${v.moduleId}/${v.variantId}/${v.lessonId}`;
+    case "plans": return `${v.activityId}/${v.moduleId}`;
+    case "plan-detail": return `${v.activityId}/${v.moduleId}/${v.planId}`;
+    case "direct-lessons": return `${v.activityId}/${v.moduleId}`;
+    case "direct-lesson": return `${v.activityId}/${v.moduleId}/${v.lessonId}`;
+    default: return "";
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Breadcrumb helper
@@ -645,9 +688,30 @@ export default function LearnTab({
   token: string | null;
   user: UserProfile | null;
 }) {
-  const [view, setView] = useState<LearnView>({ screen: "sports" });
+  const router = useRouter();
+  const pathname = usePathname();
+  const [view, setView] = useState<LearnView>(() => {
+    const segments = pathname.replace(/^\/learn\/?/, "").split("/").filter(Boolean);
+    return slugToView(segments);
+  });
   const [completed, setCompleted] = useState<Set<string>>(new Set());
   const [loadingProgress, setLoadingProgress] = useState(false);
+
+  // Sync view from URL when pathname changes (browser back/forward)
+  useEffect(() => {
+    const segments = pathname.replace(/^\/learn\/?/, "").split("/").filter(Boolean);
+    setView(slugToView(segments));
+  }, [pathname]);
+
+  // Navigate: update state immediately + push URL
+  const navigate = useCallback(
+    (newView: LearnView) => {
+      setView(newView);
+      const path = viewToPath(newView);
+      router.push(`/learn${path ? `/${path}` : ""}`);
+    },
+    [router],
+  );
 
   // Load progress on mount (skip if unauthenticated)
   useEffect(() => {
@@ -694,12 +758,12 @@ export default function LearnTab({
 
   function buildCrumbs() {
     const crumbs: { label: string; onClick: () => void }[] = [
-      { label: "Learn", onClick: () => setView({ screen: "sports" }) },
+      { label: "Learn", onClick: () => navigate({ screen: "sports" }) },
     ];
     if ("activityId" in view && currentActivity) {
       crumbs.push({
         label: currentActivity.title,
-        onClick: () => setView({ screen: "modules", activityId: currentActivity.id }),
+        onClick: () => navigate({ screen: "modules", activityId: currentActivity.id }),
       });
     }
     if ("moduleId" in view && currentModule) {
@@ -708,11 +772,11 @@ export default function LearnTab({
         onClick: () => {
           const v = view as { activityId: string; moduleId: string };
           if (currentModule.type === "variant-select") {
-            setView({ screen: "variants", activityId: v.activityId, moduleId: v.moduleId });
+            navigate({ screen: "variants", activityId: v.activityId, moduleId: v.moduleId });
           } else if (currentModule.type === "plans") {
-            setView({ screen: "plans", activityId: v.activityId, moduleId: v.moduleId });
+            navigate({ screen: "plans", activityId: v.activityId, moduleId: v.moduleId });
           } else {
-            setView({ screen: "direct-lessons", activityId: v.activityId, moduleId: v.moduleId });
+            navigate({ screen: "direct-lessons", activityId: v.activityId, moduleId: v.moduleId });
           }
         },
       });
@@ -726,7 +790,7 @@ export default function LearnTab({
           crumbs.push({
             label: variant.title,
             onClick: () =>
-              setView({ screen: "lessons", activityId: v.activityId, moduleId: v.moduleId, variantId: v.variantId }),
+              navigate({ screen: "lessons", activityId: v.activityId, moduleId: v.moduleId, variantId: v.variantId }),
           });
         }
       }
@@ -780,7 +844,7 @@ export default function LearnTab({
       return (
         <SportSelector
           completed={completed}
-          onSelect={(activity) => setView({ screen: "modules", activityId: activity.id })}
+          onSelect={(activity) => navigate({ screen: "modules", activityId: activity.id })}
         />
       );
     }
@@ -793,11 +857,11 @@ export default function LearnTab({
           onSelect={(mod) => {
             const v = view as { activityId: string };
             if (mod.type === "variant-select") {
-              setView({ screen: "variants", activityId: v.activityId, moduleId: mod.id });
+              navigate({ screen: "variants", activityId: v.activityId, moduleId: mod.id });
             } else if (mod.type === "plans") {
-              setView({ screen: "plans", activityId: v.activityId, moduleId: mod.id });
+              navigate({ screen: "plans", activityId: v.activityId, moduleId: mod.id });
             } else {
-              setView({ screen: "direct-lessons", activityId: v.activityId, moduleId: mod.id });
+              navigate({ screen: "direct-lessons", activityId: v.activityId, moduleId: mod.id });
             }
           }}
         />
@@ -816,7 +880,7 @@ export default function LearnTab({
               variantLessonId(v.activityId, v.moduleId, variantId, lessonId)
             }
             onSelect={(variant) =>
-              setView({ screen: "lessons", activityId: v.activityId, moduleId: v.moduleId, variantId: variant.id })
+              navigate({ screen: "lessons", activityId: v.activityId, moduleId: v.moduleId, variantId: variant.id })
             }
           />
         </div>
@@ -833,7 +897,7 @@ export default function LearnTab({
           buildId={(lessonId) => variantLessonId(v.activityId, v.moduleId, v.variantId, lessonId)}
           completed={completed}
           onSelect={(lesson, lessonId) =>
-            setView({
+            navigate({
               screen: "lesson",
               activityId: v.activityId,
               moduleId: v.moduleId,
@@ -860,7 +924,7 @@ export default function LearnTab({
           completed={completed.has(lessonId)}
           onToggle={(id, done) => toggleLesson(id, done)}
           onBack={() =>
-            setView({ screen: "lessons", activityId: v.activityId, moduleId: v.moduleId, variantId: v.variantId })
+            navigate({ screen: "lessons", activityId: v.activityId, moduleId: v.moduleId, variantId: v.variantId })
           }
         />
       );
@@ -874,7 +938,7 @@ export default function LearnTab({
           buildId={(lessonId) => directLessonId(v.activityId, v.moduleId, lessonId)}
           completed={completed}
           onSelect={(lesson) =>
-            setView({ screen: "direct-lesson", activityId: v.activityId, moduleId: v.moduleId, lessonId: lesson.id })
+            navigate({ screen: "direct-lesson", activityId: v.activityId, moduleId: v.moduleId, lessonId: lesson.id })
           }
         />
       );
@@ -892,7 +956,7 @@ export default function LearnTab({
           completed={completed.has(lessonId)}
           onToggle={(id, done) => toggleLesson(id, done)}
           onBack={() =>
-            setView({ screen: "direct-lessons", activityId: v.activityId, moduleId: v.moduleId })
+            navigate({ screen: "direct-lessons", activityId: v.activityId, moduleId: v.moduleId })
           }
         />
       );
@@ -907,7 +971,7 @@ export default function LearnTab({
           moduleId={v.moduleId}
           completed={completed}
           onSelect={(plan) =>
-            setView({ screen: "plan-detail", activityId: v.activityId, moduleId: v.moduleId, planId: plan.id })
+            navigate({ screen: "plan-detail", activityId: v.activityId, moduleId: v.moduleId, planId: plan.id })
           }
         />
       );
@@ -929,7 +993,7 @@ export default function LearnTab({
             const parts = lessonRef.split(".");
             if (parts.length === 4) {
               const [actId, modId, varId, lesId] = parts;
-              setView({ screen: "lesson", activityId: actId, moduleId: modId, variantId: varId, lessonId: lesId });
+              navigate({ screen: "lesson", activityId: actId, moduleId: modId, variantId: varId, lessonId: lesId });
             }
           }}
         />
