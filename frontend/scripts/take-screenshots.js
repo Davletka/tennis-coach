@@ -77,8 +77,8 @@ async function main() {
       try {
         await page.setViewport({ width: vp.width, height: vp.height });
         await page.goto(`${BASE_URL}${route.path}`, { waitUntil: "networkidle2", timeout: 20000 });
-        // Wait for any loading spinners to clear
-        await new Promise((r) => setTimeout(r, 600));
+        // Wait for React hydration + auth context to settle
+        await new Promise((r) => setTimeout(r, 2000));
         await page.screenshot({ path: outPath, fullPage: true });
         console.log(`  ✓ ${filename}`);
         captured++;
