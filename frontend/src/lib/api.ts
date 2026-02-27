@@ -52,12 +52,34 @@ export interface MetricsResult {
   detection_rate: number;
 }
 
+export interface TargetAngles {
+  right_elbow: number | null;
+  left_elbow: number | null;
+  right_shoulder: number | null;
+  left_shoulder: number | null;
+  right_knee: number | null;
+  left_knee: number | null;
+}
+
 export interface CoachingReportResult {
   swing_mechanics: string;
   footwork_movement: string;
   stance_posture: string;
   shot_selection_tactics: string;
   top_3_priorities: string[];
+  target_angles: TargetAngles | null;
+}
+
+export interface ReferencePoseResult {
+  avg_landmarks: ([number, number] | null)[];  // 33 items
+  right_elbow: number | null;
+  left_elbow: number | null;
+  right_shoulder: number | null;
+  left_shoulder: number | null;
+  right_knee: number | null;
+  left_knee: number | null;
+  frames_analyzed: number;
+  detection_rate: number;
 }
 
 // [x, y, visibility] — coordinates normalised [0, 1]; null if below visibility threshold
@@ -220,6 +242,24 @@ export async function retryJob(
     throw new Error(`Retry failed (${res.status}): ${detail}`);
   }
   return res.json() as Promise<AnalyzeResponse>;
+}
+
+export async function uploadReferenceVideo(
+  file: File,
+  token: string,
+): Promise<ReferencePoseResult> {
+  const form = new FormData();
+  form.append("file", file);
+  const res = await fetch(`${API_BASE}/api/v1/reference`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body: form,
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Reference upload failed (${res.status}): ${detail}`);
+  }
+  return res.json() as Promise<ReferencePoseResult>;
 }
 
 // ---------------------------------------------------------------------------

@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import {
   uploadVideo,
+  uploadReferenceVideo,
   retryJob,
   getJobStatus,
   getJobResult,
@@ -13,6 +14,7 @@ import {
   type JobResultResponse,
   type AngleStatResult,
   type MetricsResult,
+  type FrameData,
   type UserProfile,
   type SessionSummary,
   type SessionListResponse,
@@ -20,6 +22,8 @@ import {
   type MetricDelta,
   type DeltaCoachingReport,
   type CompareResponse,
+  type ReferencePoseResult,
+  type TargetAngles,
 } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
@@ -632,139 +636,303 @@ const POSE_CONNECTIONS: [number, number][] = [
   [23, 25], [25, 27], [24, 26], [26, 28],
 ];
 
+// Connection → which angle key drives its color
+const CONNECTION_ANGLE_KEY: Record<string, keyof TargetAngles> = {
+  "11,13": "left_shoulder", "13,15": "left_elbow",
+  "12,14": "right_shoulder", "14,16": "right_elbow",
+  "23,25": "left_knee",  "25,27": "left_knee",
+  "24,26": "right_knee", "26,28": "right_knee",
+  "11,12": "right_shoulder", "11,23": "left_shoulder",
+  "12,24": "right_shoulder", "23,24": "right_knee",
+};
+
+function formatTime(secs: number): string {
+  const m = Math.floor(secs / 60);
+  const s = Math.floor(secs % 60);
+  return `${m}:${s.toString().padStart(2, "0")}`;
+}
+
+function drawDiff(
+  canvas: HTMLCanvasElement,
+  fd: FrameData | undefined,
+  bbox: { x: number; y: number; w: number; h: number },
+  result: JobResultResponse,
+  refPose: ReferencePoseResult | null,
+  showGhost: boolean,
+  showLabels: boolean,
+  swingFrames: Set<number>,
+  fi: number,
+) {
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+  const W = canvas.width;
+  const H = canvas.height;
+  ctx.fillStyle = "#111";
+  ctx.fillRect(0, 0, W, H);
+  if (!fd?.lm) return;
+
+  const targets = result.coaching_report.target_angles;
+
+  function toCanvas(lx: number, ly: number): [number, number] {
+    return [((lx - bbox.x) / bbox.w) * W, ((ly - bbox.y) / bbox.h) * H];
+  }
+
+  const angleOfJoint: Record<keyof TargetAngles, number | null> = {
+    right_elbow: fd.re,
+    left_elbow: fd.le,
+    right_shoulder: fd.rs,
+    left_shoulder: fd.ls,
+    right_knee: fd.rk,
+    left_knee: fd.lk,
+  };
+
+  function deviationColor(key: keyof TargetAngles): string {
+    const current = angleOfJoint[key];
+    const target = targets?.[key] ?? null;
+    if (current === null || target === null) return "rgba(150,150,150,0.6)";
+    const diff = Math.abs(current - target);
+    if (diff < 15) return "rgba(0,255,120,0.9)";
+    if (diff < 30) return "rgba(255,200,0,0.9)";
+    return "rgba(255,70,70,0.9)";
+  }
+
+  // Draw ghost reference skeleton (dashed)
+  if (showGhost && refPose) {
+    ctx.setLineDash([5, 4]);
+    ctx.strokeStyle = "rgba(100,150,255,0.45)";
+    ctx.lineWidth = 2;
+    for (const [a, b] of POSE_CONNECTIONS) {
+      const pa = refPose.avg_landmarks[a];
+      const pb = refPose.avg_landmarks[b];
+      if (!pa || !pb) continue;
+      const [ax, ay] = toCanvas(pa[0], pa[1]);
+      const [bx, by] = toCanvas(pb[0], pb[1]);
+      ctx.beginPath();
+      ctx.moveTo(ax, ay);
+      ctx.lineTo(bx, by);
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+
+  // Draw current pose skeleton (color-coded by deviation)
+  ctx.lineWidth = 2.5;
+  for (const [a, b] of POSE_CONNECTIONS) {
+    const ptA = fd.lm[a];
+    const ptB = fd.lm[b];
+    if (!ptA || !ptB) continue;
+    const key = CONNECTION_ANGLE_KEY[`${a},${b}`] as keyof TargetAngles | undefined;
+    ctx.strokeStyle = key ? deviationColor(key) : "rgba(150,150,150,0.6)";
+    ctx.beginPath();
+    const [ax, ay] = toCanvas(ptA[0], ptA[1]);
+    const [bx, by] = toCanvas(ptB[0], ptB[1]);
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(bx, by);
+    ctx.stroke();
+  }
+
+  // Draw joint dots
+  ctx.fillStyle = "rgba(255,255,255,0.8)";
+  for (const pt of fd.lm) {
+    if (!pt) continue;
+    const [cx, cy] = toCanvas(pt[0], pt[1]);
+    ctx.beginPath();
+    ctx.arc(cx, cy, 3, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Draw angle delta labels
+  if (showLabels && targets) {
+    const labelMap: [number, number | null, keyof TargetAngles, string][] = [
+      [14, fd.re, "right_elbow", "RE"],
+      [13, fd.le, "left_elbow", "LE"],
+      [12, fd.rs, "right_shoulder", "RS"],
+      [11, fd.ls, "left_shoulder", "LS"],
+      [26, fd.rk, "right_knee", "RK"],
+      [25, fd.lk, "left_knee", "LK"],
+    ];
+    ctx.font = "bold 10px monospace";
+    ctx.shadowColor = "black";
+    ctx.shadowBlur = 3;
+    for (const [lmIdx, current, key, label] of labelMap) {
+      const pt = fd.lm[lmIdx];
+      if (!pt || current === null) continue;
+      const target = targets[key] ?? null;
+      const [cx, cy] = toCanvas(pt[0], pt[1]);
+      let text = `${label}:${current.toFixed(0)}°`;
+      if (target !== null) {
+        const delta = target - current;
+        text += ` (${delta >= 0 ? "↑" : "↓"}${Math.abs(delta).toFixed(0)}°)`;
+      }
+      ctx.fillStyle = deviationColor(key).replace("0.9", "1");
+      ctx.fillText(text, cx + 5, cy - 5);
+    }
+    ctx.shadowBlur = 0;
+  }
+
+  // Swing indicator
+  if (swingFrames.has(fi)) {
+    ctx.strokeStyle = "rgb(255,165,0)";
+    ctx.lineWidth = 3;
+    ctx.strokeRect(2, 2, W - 4, H - 4);
+    ctx.font = "bold 11px sans-serif";
+    ctx.fillStyle = "rgb(255,165,0)";
+    ctx.shadowBlur = 0;
+    ctx.fillText("SWING", W - 58, 18);
+  }
+}
+
 function ResultView({
   result,
+  token,
   onReset,
 }: {
   result: JobResultResponse;
+  token: string | null;
   onReset: () => void;
 }) {
   const lowDetection = result.metrics.detection_rate < 0.4;
   const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [showSkeleton, setShowSkeleton] = useState(true);
-  const [showAngles, setShowAngles] = useState(true);
-  const [showTrail, setShowTrail] = useState(true);
+  const videoCanvasRef = useRef<HTMLCanvasElement>(null);
+  const diffCanvasRef = useRef<HTMLCanvasElement>(null);
+  const bboxRef = useRef({ x: 0, y: 0, w: 1, h: 1 });
+  const [playing, setPlaying] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [showGhost, setShowGhost] = useState(true);
+  const [showLabels, setShowLabels] = useState(true);
+  const [refPose, setRefPose] = useState<ReferencePoseResult | null>(null);
+  const [refLoading, setRefLoading] = useState(false);
 
-  // Keep canvas dimensions in sync with the video element's rendered size
+  const swingFrames = useMemo(
+    () => new Set(result.metrics.swing_events.map((e) => e.frame_index)),
+    [result.metrics.swing_events],
+  );
+
+  // Sync canvas sizes to their container (4:3 aspect ratio via CSS)
   useEffect(() => {
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
+    const vc = videoCanvasRef.current;
+    const dc = diffCanvasRef.current;
+    if (!vc || !dc) return;
     const sync = () => {
-      canvas.width = video.clientWidth;
-      canvas.height = video.clientHeight;
+      vc.width = vc.clientWidth;
+      vc.height = vc.clientHeight;
+      dc.width = dc.clientWidth;
+      dc.height = dc.clientHeight;
     };
     const ro = new ResizeObserver(sync);
-    ro.observe(video);
-    video.addEventListener("loadedmetadata", sync);
+    ro.observe(vc);
+    ro.observe(dc);
     sync();
-    return () => {
-      ro.disconnect();
-      video.removeEventListener("loadedmetadata", sync);
-    };
+    return () => ro.disconnect();
   }, []);
 
-  // Draw pose overlay on every frame tick
+  // rAF loop: draw zoomed video + diff skeleton
   useEffect(() => {
     const video = videoRef.current;
-    const canvas = canvasRef.current;
-    if (!video || !canvas) return;
+    const vc = videoCanvasRef.current;
+    const dc = diffCanvasRef.current;
+    if (!video || !vc || !dc) return;
+    const SMOOTH = 0.12;
+    let rafId: number;
 
-    const swingFrames = new Set(result.metrics.swing_events.map((e) => e.frame_index));
-
-    function draw() {
-      if (!video || !canvas || canvas.width === 0) return;
+    function tick() {
+      rafId = requestAnimationFrame(tick);
+      if (!video || !vc || !dc) return;
       const fi = Math.min(
         Math.floor(video.currentTime * result.fps),
         result.frame_data.length - 1,
       );
       const fd = result.frame_data[fi];
-      const ctx = canvas.getContext("2d")!;
-      const W = canvas.width;
-      const H = canvas.height;
-      ctx.clearRect(0, 0, W, H);
-      if (!fd?.lm) return;
 
-      if (showSkeleton) {
-        ctx.strokeStyle = "rgba(0,255,0,0.9)";
-        ctx.lineWidth = 2;
-        for (const [a, b] of POSE_CONNECTIONS) {
-          const ptA = fd.lm[a], ptB = fd.lm[b];
-          if (!ptA || !ptB) continue;
-          ctx.beginPath();
-          ctx.moveTo(ptA[0] * W, ptA[1] * H);
-          ctx.lineTo(ptB[0] * W, ptB[1] * H);
-          ctx.stroke();
+      // Update smoothed bounding box
+      if (fd?.lm) {
+        const pts = fd.lm.filter(Boolean) as [number, number, number][];
+        if (pts.length) {
+          const pad = 0.15;
+          const xs = pts.map((p) => p[0]);
+          const ys = pts.map((p) => p[1]);
+          const minX = Math.max(0, Math.min(...xs) - pad);
+          const minY = Math.max(0, Math.min(...ys) - pad);
+          const maxX = Math.min(1, Math.max(...xs) + pad);
+          const maxY = Math.min(1, Math.max(...ys) + pad);
+          const nb = { x: minX, y: minY, w: maxX - minX, h: maxY - minY };
+          const b = bboxRef.current;
+          bboxRef.current = {
+            x: b.x + (nb.x - b.x) * SMOOTH,
+            y: b.y + (nb.y - b.y) * SMOOTH,
+            w: b.w + (nb.w - b.w) * SMOOTH,
+            h: b.h + (nb.h - b.h) * SMOOTH,
+          };
         }
-        ctx.fillStyle = "rgba(0,200,255,0.9)";
-        for (const pt of fd.lm) {
-          if (!pt) continue;
-          ctx.beginPath();
-          ctx.arc(pt[0] * W, pt[1] * H, 4, 0, Math.PI * 2);
-          ctx.fill();
+      }
+      const bbox = bboxRef.current;
+
+      // Draw cropped video onto left canvas
+      const vctx = vc.getContext("2d");
+      if (vctx) {
+        vctx.clearRect(0, 0, vc.width, vc.height);
+        if (video.readyState >= 2) {
+          const vw = video.videoWidth;
+          const vh = video.videoHeight;
+          vctx.drawImage(
+            video,
+            bbox.x * vw, bbox.y * vh, bbox.w * vw, bbox.h * vh,
+            0, 0, vc.width, vc.height,
+          );
         }
       }
 
-      if (showTrail) {
-        const start = Math.max(0, fi - 15);
-        const rPts: [number, number][] = [];
-        const lPts: [number, number][] = [];
-        for (let i = start; i <= fi; i++) {
-          const t = result.frame_data[i];
-          if (!t?.lm) continue;
-          const rw = t.lm[16]; if (rw) rPts.push([rw[0] * W, rw[1] * H]);
-          const lw = t.lm[15]; if (lw) lPts.push([lw[0] * W, lw[1] * H]);
-        }
-        for (const pts of [rPts, lPts]) {
-          for (let i = 1; i < pts.length; i++) {
-            ctx.strokeStyle = `rgba(0,100,255,${(i / pts.length) * 0.8})`;
-            ctx.lineWidth = 2;
-            ctx.beginPath();
-            ctx.moveTo(pts[i - 1][0], pts[i - 1][1]);
-            ctx.lineTo(pts[i][0], pts[i][1]);
-            ctx.stroke();
-          }
-        }
-      }
-
-      if (showAngles) {
-        ctx.font = "bold 11px monospace";
-        ctx.fillStyle = "white";
-        ctx.shadowColor = "black";
-        ctx.shadowBlur = 3;
-        const angleMap: [number, number | null, string][] = [
-          [14, fd.re, "RE"], [13, fd.le, "LE"],
-          [12, fd.rs, "RS"], [11, fd.ls, "LS"],
-          [26, fd.rk, "RK"], [25, fd.lk, "LK"],
-        ];
-        for (const [lmIdx, angle, label] of angleMap) {
-          if (angle === null) continue;
-          const pt = fd.lm[lmIdx];
-          if (!pt) continue;
-          ctx.fillText(`${label}:${angle.toFixed(0)}°`, pt[0] * W + 6, pt[1] * H - 6);
-        }
-        ctx.shadowBlur = 0;
-      }
-
-      if (swingFrames.has(fi)) {
-        ctx.strokeStyle = "rgb(255,165,0)";
-        ctx.lineWidth = 3;
-        ctx.strokeRect(2, 2, W - 4, H - 4);
-        ctx.font = "bold 12px sans-serif";
-        ctx.fillStyle = "rgb(255,165,0)";
-        ctx.shadowBlur = 0;
-        ctx.fillText("SWING", W - 60, 20);
-      }
+      // Draw diff skeleton on right canvas
+      drawDiff(dc, fd, bbox, result, refPose, showGhost, showLabels, swingFrames, fi);
     }
 
-    video.addEventListener("timeupdate", draw);
-    video.addEventListener("seeked", draw);
+    rafId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(rafId);
+  }, [result, refPose, showGhost, showLabels, swingFrames]);
+
+  // Sync currentTime display and play/pause state
+  useEffect(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    const onTime = () => setCurrentTime(video.currentTime);
+    const onPlay = () => setPlaying(true);
+    const onPause = () => setPlaying(false);
+    video.addEventListener("timeupdate", onTime);
+    video.addEventListener("play", onPlay);
+    video.addEventListener("pause", onPause);
     return () => {
-      video.removeEventListener("timeupdate", draw);
-      video.removeEventListener("seeked", draw);
+      video.removeEventListener("timeupdate", onTime);
+      video.removeEventListener("play", onPlay);
+      video.removeEventListener("pause", onPause);
     };
-  }, [result, showSkeleton, showAngles, showTrail]);
+  }, []);
+
+  const togglePlay = useCallback(() => {
+    const video = videoRef.current;
+    if (!video) return;
+    if (video.paused) video.play();
+    else video.pause();
+  }, []);
+
+  const handleRefUpload = useCallback(
+    async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const f = e.target.files?.[0];
+      if (!f || !token) return;
+      setRefLoading(true);
+      try {
+        const rp = await uploadReferenceVideo(f, token);
+        setRefPose(rp);
+      } catch (err) {
+        console.error("Reference upload failed:", err);
+      } finally {
+        setRefLoading(false);
+        e.target.value = "";
+      }
+    },
+    [token],
+  );
+
+  const duration = result.total_source_frames / result.fps;
 
   return (
     <div className="space-y-6">
@@ -776,39 +944,112 @@ function ResultView({
         </div>
       )}
 
-      <div className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
-            Video + Pose Overlay
+      {/* Hidden video element drives both canvases */}
+      <video ref={videoRef} src={result.input_video_url} className="hidden" preload="auto" />
+
+      {/* Side-by-side: zoomed video | diff canvas */}
+      <div className="grid grid-cols-2 gap-3">
+        {/* Left: zoomed video */}
+        <div className="space-y-1">
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+            Zoomed View
           </h2>
-          <div className="flex items-center gap-3 text-xs text-gray-400">
-            <label className="flex items-center gap-1.5 cursor-pointer select-none">
-              <input type="checkbox" checked={showSkeleton} onChange={(e) => setShowSkeleton(e.target.checked)} className="accent-green-500" />
-              Skeleton
-            </label>
-            <label className="flex items-center gap-1.5 cursor-pointer select-none">
-              <input type="checkbox" checked={showAngles} onChange={(e) => setShowAngles(e.target.checked)} className="accent-green-500" />
-              Angles
-            </label>
-            <label className="flex items-center gap-1.5 cursor-pointer select-none">
-              <input type="checkbox" checked={showTrail} onChange={(e) => setShowTrail(e.target.checked)} className="accent-green-500" />
-              Trail
-            </label>
-          </div>
-        </div>
-        <div className="relative overflow-hidden rounded-lg bg-black">
-          <video
-            ref={videoRef}
-            src={result.input_video_url}
-            controls
-            className="block w-full"
-            style={{ maxHeight: "480px" }}
-          />
           <canvas
-            ref={canvasRef}
-            className="pointer-events-none absolute inset-0 h-full w-full"
+            ref={videoCanvasRef}
+            className="block w-full rounded-lg bg-black"
+            style={{ aspectRatio: "4/3" }}
           />
         </div>
+
+        {/* Right: diff canvas */}
+        <div className="space-y-1">
+          <div className="flex items-center justify-between">
+            <h2 className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+              Form Diff
+            </h2>
+            <div className="flex gap-2 text-xs text-gray-400">
+              <label className="flex items-center gap-1 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showGhost}
+                  onChange={(e) => setShowGhost(e.target.checked)}
+                  className="accent-blue-400"
+                />
+                Ghost
+              </label>
+              <label className="flex items-center gap-1 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={showLabels}
+                  onChange={(e) => setShowLabels(e.target.checked)}
+                  className="accent-green-400"
+                />
+                Labels
+              </label>
+            </div>
+          </div>
+          <canvas
+            ref={diffCanvasRef}
+            className="block w-full rounded-lg bg-[#111]"
+            style={{ aspectRatio: "4/3" }}
+          />
+        </div>
+      </div>
+
+      {/* Custom video controls + reference upload */}
+      <div className="flex items-center gap-3">
+        <button
+          onClick={togglePlay}
+          className="px-3 py-1 rounded bg-gray-700 text-sm text-white hover:bg-gray-600 transition-colors"
+        >
+          {playing ? "Pause" : "Play"}
+        </button>
+        <input
+          type="range"
+          min={0}
+          max={duration}
+          step={1 / result.fps}
+          value={currentTime}
+          onChange={(e) => {
+            const v = videoRef.current;
+            if (v) v.currentTime = +e.target.value;
+          }}
+          className="flex-1 accent-green-500"
+        />
+        <span className="text-xs text-gray-400 w-14 text-right">
+          {formatTime(currentTime)}
+        </span>
+        <label className="cursor-pointer rounded border border-dashed border-gray-600 px-3 py-1 text-xs text-gray-400 hover:border-blue-400 hover:text-blue-300 transition-colors whitespace-nowrap">
+          {refLoading ? "Processing…" : refPose ? "Reference ✓" : "+ Reference"}
+          <input
+            type="file"
+            accept="video/*"
+            className="hidden"
+            onChange={handleRefUpload}
+          />
+        </label>
+      </div>
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-4 text-xs text-gray-500">
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-4 h-0.5 bg-green-400 rounded" />
+          Good (&lt;15°)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-4 h-0.5 bg-yellow-400 rounded" />
+          Off (15–30°)
+        </span>
+        <span className="flex items-center gap-1.5">
+          <span className="inline-block w-4 h-0.5 bg-red-400 rounded" />
+          Needs fix (&gt;30°)
+        </span>
+        {refPose && (
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-4 border-t-2 border-dashed border-blue-400 opacity-60" />
+            Reference pose
+          </span>
+        )}
       </div>
 
       <div className="space-y-2">
@@ -1691,7 +1932,7 @@ export default function Home() {
       {activeTab === "analyze" && (
         <>
           {state.phase === "completed" ? (
-            <ResultView result={state.result} onReset={reset} />
+            <ResultView result={state.result} token={token} onReset={reset} />
           ) : state.phase === "failed" ? (
             <div className="space-y-4">
               <div className="rounded-lg border border-red-700 bg-red-950/40 px-4 py-3 text-sm text-red-300">

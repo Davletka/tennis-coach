@@ -31,6 +31,7 @@ class CoachingReport:
     stance_posture: str = ""
     shot_selection_tactics: str = ""
     top_3_priorities: List[str] = field(default_factory=list)
+    target_angles: dict = field(default_factory=dict)
     raw_response: str = ""
 
 
@@ -86,8 +87,18 @@ def _build_user_prompt(
         '  "footwork_movement": "...",',
         '  "stance_posture": "...",',
         '  "shot_selection_tactics": "...",',
-        '  "top_3_priorities": ["...", "...", "..."]',
+        '  "top_3_priorities": ["...", "...", "..."],',
+        '  "target_angles": {',
+        '    "right_elbow": <target degrees as number, or null if not applicable>,',
+        '    "left_elbow": <target degrees, or null>,',
+        '    "right_shoulder": <target degrees, or null>,',
+        '    "left_shoulder": <target degrees, or null>,',
+        '    "right_knee": <target degrees, or null>,',
+        '    "left_knee": <target degrees, or null>',
+        '  }',
         "}",
+        "",
+        "Set target_angles to the ideal joint angles you recommend for this player's shot type. Use null for joints where current data is insufficient.",
     ]
 
     return "\n".join(lines)
@@ -155,6 +166,7 @@ def _parse_response(raw_text: str) -> CoachingReport:
         report.stance_posture = data.get("stance_posture", "")
         report.shot_selection_tactics = data.get("shot_selection_tactics", "")
         report.top_3_priorities = data.get("top_3_priorities", [])
+        report.target_angles = data.get("target_angles", {}) or {}
     except (json.JSONDecodeError, ValueError):
         # Fallback: dump raw text into swing_mechanics
         report.swing_mechanics = raw_text
