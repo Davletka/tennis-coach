@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import {
   uploadVideo,
+  retryJob,
   getJobStatus,
   getJobResult,
   getMe,
@@ -30,7 +31,7 @@ type AppState =
   | { phase: "uploading"; file: File; progress: number }
   | { phase: "polling"; jobId: string; progress: number; message: string }
   | { phase: "completed"; result: JobResultResponse }
-  | { phase: "failed"; error: string };
+  | { phase: "failed"; error: string; jobId?: string };
 
 type AppAction =
   | { type: "SELECT_FILE"; file: File }
@@ -38,7 +39,8 @@ type AppAction =
   | { type: "UPLOAD_DONE"; jobId: string }
   | { type: "POLL_UPDATE"; progress: number; message: string }
   | { type: "COMPLETE"; result: JobResultResponse }
-  | { type: "FAIL"; error: string }
+  | { type: "FAIL"; error: string; jobId?: string }
+  | { type: "RETRY"; jobId: string }
   | { type: "RESET" };
 
 function reducer(state: AppState, action: AppAction): AppState {
@@ -56,7 +58,9 @@ function reducer(state: AppState, action: AppAction): AppState {
     case "COMPLETE":
       return { phase: "completed", result: action.result };
     case "FAIL":
-      return { phase: "failed", error: action.error };
+      return { phase: "failed", error: action.error, jobId: action.jobId };
+    case "RETRY":
+      return { phase: "polling", jobId: action.jobId, progress: 0, message: "Retrying…" };
     case "RESET":
       return { phase: "idle" };
     default:
@@ -92,7 +96,7 @@ function useCourtCoach(token: string | null) {
             const result = await getJobResult(jobId, tok);
             dispatch({ type: "COMPLETE", result });
           } else if (status.status === "failed") {
-            dispatch({ type: "FAIL", error: "Analysis failed on the server." });
+            dispatch({ type: "FAIL", error: "Analysis failed on the server.", jobId });
           } else {
             dispatch({
               type: "POLL_UPDATE",
@@ -128,13 +132,27 @@ function useCourtCoach(token: string | null) {
     [scheduleNextPoll]
   );
 
+  const retry = useCallback(
+    async (jobId: string) => {
+      if (!tokenRef.current) return;
+      try {
+        await retryJob(jobId, tokenRef.current);
+        dispatch({ type: "RETRY", jobId });
+        scheduleNextPoll(jobId);
+      } catch (err) {
+        dispatch({ type: "FAIL", error: String(err), jobId });
+      }
+    },
+    [scheduleNextPoll]
+  );
+
   const reset = useCallback(() => {
     stopPolling();
     setFile(null);
     dispatch({ type: "RESET" });
   }, [stopPolling]);
 
-  return { state, file, setFile, analyze, reset };
+  return { state, file, setFile, analyze, retry, reset };
 }
 
 // ---------------------------------------------------------------------------
@@ -1507,7 +1525,7 @@ function LandingPage({ onSignIn }: { onSignIn: () => void }) {
 
 export default function Home() {
   const { token, user, loading: authLoading, signIn, signOut } = useAuth();
-  const { state, file, setFile, analyze, reset } = useCourtCoach(token);
+  const { state, file, setFile, analyze, retry, reset } = useCourtCoach(token);
   const [activeTab, setActiveTab] = useState<Tab>("analyze");
 
   const handleFile = useCallback((f: File) => setFile(f), [setFile]);
@@ -1544,12 +1562,22 @@ export default function Home() {
               <div className="rounded-lg border border-red-700 bg-red-950/40 px-4 py-3 text-sm text-red-300">
                 <strong>Error:</strong> {state.error}
               </div>
-              <button
-                onClick={reset}
-                className="w-full rounded-lg border border-gray-600 px-4 py-2.5 text-sm font-medium text-gray-300 hover:border-gray-400 hover:text-white"
-              >
-                Try again
-              </button>
+              <div className="flex gap-3">
+                {state.jobId && (
+                  <button
+                    onClick={() => retry(state.jobId!)}
+                    className="flex-1 rounded-lg bg-green-700 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-600 transition-colors"
+                  >
+                    Retry Analysis
+                  </button>
+                )}
+                <button
+                  onClick={reset}
+                  className="flex-1 rounded-lg border border-gray-600 px-4 py-2.5 text-sm font-medium text-gray-300 hover:border-gray-400 hover:text-white transition-colors"
+                >
+                  Start Fresh
+                </button>
+              </div>
             </div>
           ) : !user ? (
             <LandingPage onSignIn={signIn} />

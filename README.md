@@ -149,9 +149,10 @@ All `/api/v1/*` routes require a `Authorization: Bearer <token>` header. Obtain 
 | `GET` | `/auth/google` | — | Start Google OAuth flow (302 redirect) |
 | `GET` | `/auth/callback` | — | OAuth callback → sign JWT → redirect to frontend |
 | `GET` | `/auth/me` | Required | Return authenticated user profile |
-| `POST` | `/api/v1/analyze` | Required | Upload video → returns `job_id` (202 Accepted) |
+| `POST` | `/api/v1/analyze` | Required | Upload video → returns `job_id` (202 Accepted); deduplicates identical uploads per user via SHA-256 |
 | `GET` | `/api/v1/jobs/{job_id}` | Required | Poll status + progress (0–100%) |
 | `GET` | `/api/v1/jobs/{job_id}/result` | Required | Fetch coaching report, metrics, and presigned video URLs |
+| `POST` | `/api/v1/jobs/{job_id}/retry` | Required | Re-queue a failed job from the furthest checkpoint (coaching-only or full re-run) |
 | `GET` | `/api/v1/users/{user_id}/history` | Required | Paginated session list with presigned URLs |
 | `GET` | `/api/v1/users/{user_id}/progress` | Required | Time-series of scalar metrics for charting |
 | `POST` | `/api/v1/users/{user_id}/compare` | Required | Delta coaching between two sessions |
