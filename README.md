@@ -13,6 +13,7 @@ AI-powered sports coaching app that analyzes uploaded videos using pose detectio
 - **Reference pose overlay** — upload a reference video clip to generate a ghost skeleton (dashed) overlaid on the diff canvas
 - **AI coaching with target angles** — Claude Sonnet generates metrics-referenced feedback across 4 categories and recommends ideal joint angles for the player's shot type
 - **Per-event breakdown** — each detected swing/rep is analyzed individually; collapsible cards show per-event metrics (joint angles, peak speed/depth, torso rotation) and AI coaching; clicking the timestamp chip seeks the video to that event
+- **Learning track** — structured lessons with SVG diagrams for each sport; Tennis covers forehand grips (Eastern / Western / Continental / Semi-Western) → shot lessons; Gym covers exercises by muscle group + equipment, and multi-day workout plans (PPL, Full-Body); progress is synced to PostgreSQL per user and visualised with per-module completion rings
 
 ## Setup
 
@@ -47,6 +48,7 @@ Open http://localhost:3000. The frontend requires the FastAPI backend running (s
 6. Switch to **History** to browse all past sessions (expandable coaching + metrics per session)
 7. Switch to **Compare** to select two sessions and get AI-generated delta coaching with metric changes
 8. Switch to **Progress** to see SVG sparkline charts for each metric across up to 30 sessions
+9. Switch to **Learn** to browse sport-specific lessons — choose a sport, a module, a grip/equipment variant, then work through lessons; each lesson has SVG diagrams and coaching text; mark lessons complete to track your progress
 
 ## Makefile
 
@@ -162,6 +164,9 @@ All `/api/v1/*` routes require a `Authorization: Bearer <token>` header. Obtain 
 | `GET` | `/api/v1/users/{user_id}/history` | Required | Paginated session list with presigned URLs |
 | `GET` | `/api/v1/users/{user_id}/progress` | Required | Time-series of scalar metrics for charting |
 | `POST` | `/api/v1/users/{user_id}/compare` | Required | Delta coaching between two sessions |
+| `GET` | `/api/v1/learn/progress` | Required | List all lesson IDs the user has marked complete |
+| `POST` | `/api/v1/learn/progress` | Required | Mark a lesson complete `{ lesson_id }` (idempotent) |
+| `DELETE` | `/api/v1/learn/progress/{lesson_id}` | Required | Unmark a lesson (idempotent) |
 
 Sessions are persisted to PostgreSQL on every completed analysis. Ephemeral job state expires from Redis after 24h.
 
@@ -171,7 +176,9 @@ Sessions are persisted to PostgreSQL on every completed analysis. Ephemeral job 
 tennis-coach/
 ├── frontend/               # Next.js 14 React frontend
 │   ├── src/app/page.tsx    # Entire app: state machine + all components
+│   ├── src/app/learn-tab.tsx  # Learning track tab component
 │   ├── src/lib/api.ts      # TypeScript fetch helpers + API types
+│   ├── src/lib/learn-content.ts  # Static lesson content + SVG diagrams
 │   └── next.config.mjs     # output: "standalone"
 ├── config.py               # Landmark indices, thresholds, constants
 ├── celery_app.py           # Celery instance (broker=Redis)
@@ -197,7 +204,8 @@ tennis-coach/
 │   ├── routes/
 │   │   ├── analysis.py     # Job endpoints (analyze / status / result)
 │   │   ├── auth.py         # /auth/google, /auth/callback, /auth/me
-│   │   └── history.py      # History / progress / compare endpoints
+│   │   ├── history.py      # History / progress / compare endpoints
+│   │   └── learn_progress.py  # Learning track progress endpoints
 │   ├── services/
 │   │   ├── storage.py      # R2 upload + presigned URLs
 │   │   ├── job_store.py    # Redis job state (user-scoped)

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+import LearnTab from "./learn-tab";
 import {
   uploadVideo,
   uploadReferenceVideo,
@@ -211,7 +212,7 @@ function useAuth() {
 // Navigation
 // ---------------------------------------------------------------------------
 
-type Tab = "analyze" | "history" | "compare" | "progress";
+type Tab = "analyze" | "history" | "compare" | "progress" | "learn";
 
 function NavBar({
   activeTab,
@@ -231,6 +232,7 @@ function NavBar({
     { key: "history", label: "History" },
     { key: "compare", label: "Compare" },
     { key: "progress", label: "Progress" },
+    { key: "learn", label: "Learn" },
   ];
 
   return (
@@ -2560,6 +2562,10 @@ export default function Home() {
             onSignIn={signIn}
           />
         ))}
+
+      {activeTab === "learn" && (
+        <LearnTab token={token} user={user} />
+      )}
     </main>
   );
 }

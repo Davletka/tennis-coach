@@ -394,3 +394,53 @@ export async function compareSessions(
   }
   return res.json() as Promise<CompareResponse>;
 }
+
+// ---------------------------------------------------------------------------
+// Learning progress
+// ---------------------------------------------------------------------------
+
+export interface LessonProgressItem {
+  lesson_id: string;
+  activity_id: string;
+  completed_at: string;
+}
+
+export interface LessonProgressList {
+  items: LessonProgressItem[];
+  total: number;
+}
+
+export async function getLearningProgress(token: string): Promise<LessonProgressList> {
+  const res = await fetch(`${API_BASE}/api/v1/learn/progress`, {
+    headers: authHeaders(token),
+  });
+  if (!res.ok) throw new Error(`Learning progress fetch failed (${res.status})`);
+  return res.json() as Promise<LessonProgressList>;
+}
+
+export async function markLessonComplete(
+  token: string,
+  lessonId: string,
+): Promise<LessonProgressItem> {
+  const res = await fetch(`${API_BASE}/api/v1/learn/progress`, {
+    method: "POST",
+    headers: { ...authHeaders(token), "Content-Type": "application/json" },
+    body: JSON.stringify({ lesson_id: lessonId }),
+  });
+  if (!res.ok) {
+    const detail = await res.text();
+    throw new Error(`Mark complete failed (${res.status}): ${detail}`);
+  }
+  return res.json() as Promise<LessonProgressItem>;
+}
+
+export async function unmarkLessonComplete(token: string, lessonId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/v1/learn/progress/${encodeURIComponent(lessonId)}`, {
+    method: "DELETE",
+    headers: authHeaders(token),
+  });
+  if (!res.ok && res.status !== 404) {
+    const detail = await res.text();
+    throw new Error(`Unmark failed (${res.status}): ${detail}`);
+  }
+}

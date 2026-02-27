@@ -255,3 +255,22 @@ class CompareResponse(BaseModel):
     session_b_id: str
     metric_deltas: List[MetricDelta]
     delta_coaching: DeltaCoachingReport
+
+
+# ---------------------------------------------------------------------------
+# Learning progress models
+# ---------------------------------------------------------------------------
+
+class MarkLessonRequest(BaseModel):
+    lesson_id: str   # full dot-path e.g. "tennis.forehand.eastern.flat-forehand"
+
+
+class LessonProgressItem(BaseModel):
+    lesson_id: str
+    activity_id: str
+    completed_at: datetime
+
+
+class LessonProgressList(BaseModel):
+    items: List[LessonProgressItem]
+    total: int

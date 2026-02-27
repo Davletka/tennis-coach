@@ -29,3 +29,16 @@ CREATE TABLE analysis_sessions (
 CREATE INDEX idx_sessions_user_recorded ON analysis_sessions (user_id, recorded_at DESC);
 CREATE INDEX idx_sessions_job_id        ON analysis_sessions (job_id);
 CREATE INDEX idx_sessions_metrics_gin   ON analysis_sessions USING GIN (metrics jsonb_path_ops);
+
+-- Learning track progress
+-- lesson_id is a dot-path key: e.g. "tennis.forehand.eastern.flat-forehand"
+CREATE TABLE learn_progress (
+    id           UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID        NOT NULL REFERENCES players(user_id) ON DELETE CASCADE,
+    activity_id  TEXT        NOT NULL,                 -- "tennis", "gym", …
+    lesson_id    TEXT        NOT NULL,                 -- full dot-path
+    completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, lesson_id)
+);
+
+CREATE INDEX idx_learn_progress_user ON learn_progress (user_id, activity_id);
