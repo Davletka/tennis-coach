@@ -211,3 +211,5 @@ models/
 
 # Allow frontend source directories that would otherwise be caught by Python patterns above
 !frontend/src/lib/
+!frontend/public/models/
+!frontend/public/models/*.vrm
