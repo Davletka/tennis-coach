@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef, useCallback } from "react";
 import type { AngleStatResult, MetricsResult } from "@/lib/api";
 
 // ---------------------------------------------------------------------------
@@ -289,19 +289,40 @@ export function SwingCard({
   fps,
   onSeek,
   labels = {},
+  videoUrl,
 }: {
   analysis: PerSwingAnalysis;
   swingNumber: number;
   fps: number;
   onSeek: (t: number) => void;
   labels?: Record<string, string>;
+  videoUrl?: string;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [activeTab, setActiveTab] = useState<SwingCoachingKey>("swing_mechanics");
   const resolvedLabels = { ...DEFAULT_COACHING_LABELS, ...labels };
+  const clipRef = useRef<HTMLVideoElement>(null);
 
   const peakTimeSecs = analysis.peak_frame / Math.max(fps, 1);
+  const windowStartSecs = analysis.window_start_frame / Math.max(fps, 1);
+  const windowEndSecs = analysis.window_end_frame / Math.max(fps, 1);
   const m = analysis.metrics;
+
+  // When the clip video loads (or expanded changes), seek to the window start
+  const handleClipLoaded = useCallback(() => {
+    const v = clipRef.current;
+    if (!v) return;
+    v.currentTime = windowStartSecs;
+  }, [windowStartSecs]);
+
+  // Loop within the window
+  const handleClipTimeUpdate = useCallback(() => {
+    const v = clipRef.current;
+    if (!v) return;
+    if (v.currentTime >= windowEndSecs) {
+      v.currentTime = windowStartSecs;
+    }
+  }, [windowStartSecs, windowEndSecs]);
 
   function fmtAngle(stat: { mean: number | null; min: number | null; max: number | null }): string {
     if (stat.mean === null) return "—";
@@ -357,6 +378,21 @@ export function SwingCard({
       {/* Expanded body */}
       {expanded && (
         <div className="border-t border-gray-700 p-4 space-y-4">
+          {/* Clip player */}
+          {videoUrl && (
+            <video
+              ref={clipRef}
+              src={videoUrl}
+              className="w-full rounded-lg bg-black"
+              style={{ maxHeight: "240px" }}
+              controls
+              muted
+              playsInline
+              onLoadedMetadata={handleClipLoaded}
+              onTimeUpdate={handleClipTimeUpdate}
+            />
+          )}
+
           {/* Quick note */}
           {analysis.coaching.quick_note && (
             <p className="text-sm italic text-gray-300">{analysis.coaching.quick_note}</p>

@@ -451,9 +451,7 @@ function ResultView({
   const [showLabels, setShowLabels] = useState(true);
   const [refPose, setRefPose] = useState<ReferencePoseResult | null>(null);
   const [refLoading, setRefLoading] = useState(false);
-  const [smartPlay, setSmartPlay] = useState(true);
   const smartPlayRef = useRef(true);
-  useEffect(() => { smartPlayRef.current = smartPlay; }, [smartPlay]);
   const seekingRef = useRef(false);
 
   const swingFrames = useMemo(
@@ -601,12 +599,6 @@ function ResultView({
     };
   }, []);
 
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video || smartPlay) return;
-    video.playbackRate = 1.0;
-  }, [smartPlay]);
-
   const togglePlay = useCallback(() => {
     const video = videoRef.current;
     if (!video) return;
@@ -631,7 +623,6 @@ function ResultView({
     if (!video) return;
     video.currentTime = t;
     video.pause();
-    setSmartPlay(false);
   }, []);
 
   const handleRefUpload = useCallback(
@@ -736,23 +727,6 @@ function ResultView({
             {playing ? "Pause" : "Play"}
           </button>
 
-          {segments.length > 0 && (
-            <button
-              onClick={() => setSmartPlay((p) => !p)}
-              className={`px-3 py-1 rounded text-xs font-medium transition-colors ${
-                smartPlay
-                  ? "bg-green-700 text-white hover:bg-green-600"
-                  : "bg-gray-700 text-gray-300 hover:bg-gray-600"
-              }`}
-              title={
-                smartPlay
-                  ? "Smart Play: swing segments at 0.4× — click for full video"
-                  : "Full Play: normal speed — click for swing-only slow-mo"
-              }
-            >
-              {smartPlay ? "Smart ▶" : "Full ▶"}
-            </button>
-          )}
 
           <input
             type="range"
@@ -768,7 +742,7 @@ function ResultView({
           />
           <span className="text-xs text-gray-400 w-20 text-right tabular-nums">
             {formatTime(currentTime)}
-            {smartPlay && playing && segments.length > 0 && (
+            {playing && segments.length > 0 && (
               <span className="ml-1 text-green-400">0.4×</span>
             )}
           </span>
@@ -818,6 +792,7 @@ function ResultView({
               fps={result.fps}
               onSeek={seekTo}
               labels={result.coaching_labels}
+              videoUrl={result.input_video_url}
             />
           ))}
         </div>
