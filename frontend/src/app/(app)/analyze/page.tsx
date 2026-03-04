@@ -799,9 +799,23 @@ function ResultView({
       )}
 
       <div className="space-y-2">
-        <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
-          Coaching Feedback
-        </h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-sm font-semibold uppercase tracking-wide text-gray-400">
+            Coaching Feedback
+          </h2>
+          {result.coaching_report.session_score > 0 && (
+            <div className="flex items-center gap-1.5">
+              <span className={`rounded-full px-3 py-0.5 text-sm font-bold tabular-nums ${
+                result.coaching_report.session_score >= 80 ? "bg-green-900/60 text-green-300" :
+                result.coaching_report.session_score >= 60 ? "bg-yellow-900/60 text-yellow-300" :
+                "bg-red-900/60 text-red-300"
+              }`}>
+                {result.coaching_report.session_score}
+              </span>
+              <span className="text-xs text-gray-500">/ 100</span>
+            </div>
+          )}
+        </div>
         <CoachingPanel report={result.coaching_report} labels={result.coaching_labels} />
       </div>
 

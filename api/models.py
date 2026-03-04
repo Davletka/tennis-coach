@@ -80,6 +80,7 @@ class CoachingReportResult(BaseModel):
     shot_selection_tactics: str = ""
     top_3_priorities: List[str] = []
     target_angles: Optional[dict] = None   # keys: right_elbow, left_elbow, right_shoulder, left_shoulder, right_knee, left_knee
+    session_score: int = 0
 
 
 class ReferencePoseResult(BaseModel):
@@ -151,6 +152,7 @@ class SwingCoachingResult(BaseModel):
     stance_posture: str = ""
     shot_selection_tactics: str = ""
     top_3_priorities: List[str] = []
+    score: int = 0
 
 
 class PerSwingAnalysis(BaseModel):

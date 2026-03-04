@@ -106,10 +106,21 @@ _COACHING_TOOL: dict = {
                     "right_knee", "left_knee",
                 ],
             },
+            "session_score": {
+                "type": "integer",
+                "description": (
+                    "Overall session form score, 0–100, synthesising all reps/swings. "
+                    "Weight consistency, average rep quality, and kinematic chain engagement. "
+                    "100 = excellent session; 70–89 = solid with room to improve; "
+                    "50–69 = functional but technique needs work; below 50 = significant issues."
+                ),
+                "minimum": 0,
+                "maximum": 100,
+            },
         },
         "required": [
             "swing_mechanics", "footwork_movement", "stance_posture",
-            "shot_selection_tactics", "top_3_priorities", "target_angles",
+            "shot_selection_tactics", "top_3_priorities", "target_angles", "session_score",
         ],
     },
 }
@@ -135,10 +146,23 @@ _SWING_TOOL: dict = {
                 "minItems": 1,
                 "maxItems": 3,
             },
+            "score": {
+                "type": "integer",
+                "description": (
+                    "Overall form score for this rep/swing, 0–100. "
+                    "100 = textbook form across all joints; "
+                    "70–89 = good with minor issues; "
+                    "50–69 = functional but clear technique problems; "
+                    "below 50 = significant form breakdown. "
+                    "Base this on joint angles, symmetry, range of motion, and kinematic chain quality."
+                ),
+                "minimum": 0,
+                "maximum": 100,
+            },
         },
         "required": [
             "quick_note", "swing_mechanics", "footwork_movement",
-            "stance_posture", "shot_selection_tactics", "top_3_priorities",
+            "stance_posture", "shot_selection_tactics", "top_3_priorities", "score",
         ],
     },
 }
@@ -157,6 +181,7 @@ class SwingCoaching:
     stance_posture: str = ""
     shot_selection_tactics: str = ""
     top_3_priorities: List[str] = field(default_factory=list)
+    score: int = 0
 
 
 @dataclass
@@ -168,6 +193,7 @@ class CoachingReport:
     top_3_priorities: List[str] = field(default_factory=list)
     target_angles: dict = field(default_factory=dict)
     raw_response: str = ""
+    session_score: int = 0
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +379,7 @@ def get_coaching_feedback(
     report.shot_selection_tactics = data.get("shot_selection_tactics", "")
     report.top_3_priorities = data.get("top_3_priorities", [])
     report.target_angles = data.get("target_angles", {}) or {}
+    report.session_score = int(data.get("session_score", 0))
     return report
 
 
@@ -393,6 +420,7 @@ def _get_single_swing_coaching(psm, fps: float, client, model: str, activity_cfg
         stance_posture=data.get("stance_posture", ""),
         shot_selection_tactics=data.get("shot_selection_tactics", ""),
         top_3_priorities=data.get("top_3_priorities", []),
+        score=int(data.get("score", 0)),
     )
 
 

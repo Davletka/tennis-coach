@@ -345,6 +345,15 @@ export function SwingCard({
             {m.motion_type}
           </span>
         )}
+        {analysis.coaching.score > 0 && (
+          <span className={`flex-shrink-0 rounded-full px-2 py-0.5 text-xs font-bold tabular-nums ${
+            analysis.coaching.score >= 80 ? "bg-green-900/60 text-green-300" :
+            analysis.coaching.score >= 60 ? "bg-yellow-900/60 text-yellow-300" :
+            "bg-red-900/60 text-red-300"
+          }`}>
+            {analysis.coaching.score}
+          </span>
+        )}
         <button
           onClick={() => onSeek(peakTimeSecs)}
           className="flex-shrink-0 rounded bg-gray-800 px-2 py-0.5 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition-colors tabular-nums"

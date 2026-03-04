@@ -171,6 +171,7 @@ def run_analysis(
                         "stance_posture": sc.stance_posture,
                         "shot_selection_tactics": sc.shot_selection_tactics,
                         "top_3_priorities": sc.top_3_priorities,
+                        "score": sc.score,
                     }
                     for sc in swing_coaching_list
                 ]
@@ -191,6 +192,7 @@ def run_analysis(
                 "stance_posture": report.stance_posture,
                 "shot_selection_tactics": report.shot_selection_tactics,
                 "top_3_priorities": report.top_3_priorities,
+                "session_score": report.session_score,
             }
 
             job_store.update_job(
@@ -398,6 +400,7 @@ def run_analysis(
                     "stance_posture": sc.stance_posture,
                     "shot_selection_tactics": sc.shot_selection_tactics,
                     "top_3_priorities": sc.top_3_priorities,
+                    "score": sc.score,
                 }
                 for sc in swing_coaching_list
             ]
@@ -421,6 +424,7 @@ def run_analysis(
                 "stance_posture": report.stance_posture,
                 "shot_selection_tactics": report.shot_selection_tactics,
                 "top_3_priorities": report.top_3_priorities,
+                "session_score": report.session_score,
             }
 
             # ----------------------------------------------------------------

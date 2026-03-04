@@ -68,6 +68,7 @@ export interface CoachingReportResult {
   shot_selection_tactics: string;
   top_3_priorities: string[];
   target_angles: TargetAngles | null;
+  session_score: number;
 }
 
 export interface ReferencePoseResult {
@@ -123,6 +124,7 @@ export interface SwingCoachingResult {
   stance_posture: string;
   shot_selection_tactics: string;
   top_3_priorities: string[];
+  score: number;
 }
 
 export interface PerSwingAnalysis {
