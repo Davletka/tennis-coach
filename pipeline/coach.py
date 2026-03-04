@@ -248,24 +248,28 @@ def _build_swing_prompt(psm, fps: float, activity_cfg=None) -> str:
             return f"{v:.2f} (at hip level)"
         return f"{v:.2f} (below hips — contact point too low)"
 
+    motion_type = getattr(psm, "motion_type", "unknown")
+    motion_label = f" · {motion_type}" if motion_type and motion_type != "unknown" else ""
+
     lines = [
-        f"{event_singular.capitalize()} {psm.swing_index + 1} (frame {psm.peak_frame}, t={t:.1f}s)",
+        f"{event_singular.capitalize()} {psm.swing_index + 1}{motion_label} (frame {psm.peak_frame}, t={t:.1f}s)",
+        f"Exercise type: {motion_type}" if motion_type and motion_type != "unknown" else "Exercise type: unknown",
         f"Window: frames {psm.window_start_frame}–{psm.window_end_frame}",
         f"{event_metric_label}: {psm.peak_wrist_speed:.4f}",
         "",
-        "## At Contact Point (peak ± 2 frames) — use these for mechanics feedback",
-        f"Right elbow at contact:    {_fmt(psm.right_elbow_at_contact)}°",
-        f"Left elbow at contact:     {_fmt(psm.left_elbow_at_contact)}°",
-        f"Right shoulder at contact: {_fmt(psm.right_shoulder_at_contact)}°",
-        f"Left shoulder at contact:  {_fmt(psm.left_shoulder_at_contact)}°",
-        f"Right knee at contact:     {_fmt(psm.right_knee_at_contact)}°",
-        f"Left knee at contact:      {_fmt(psm.left_knee_at_contact)}°",
-        f"Torso rotation at contact: {_fmt(psm.torso_rotation_at_contact)}°",
+        "## At Peak (peak ± 2 frames) — use these for mechanics feedback",
+        f"Right elbow at peak:    {_fmt(psm.right_elbow_at_contact)}°",
+        f"Left elbow at peak:     {_fmt(psm.left_elbow_at_contact)}°",
+        f"Right shoulder at peak: {_fmt(psm.right_shoulder_at_contact)}°",
+        f"Left shoulder at peak:  {_fmt(psm.left_shoulder_at_contact)}°",
+        f"Right knee at peak:     {_fmt(psm.right_knee_at_contact)}°",
+        f"Left knee at peak:      {_fmt(psm.left_knee_at_contact)}°",
+        f"Torso rotation at peak: {_fmt(psm.torso_rotation_at_contact)}°",
         f"Wrist height (rel. hips):  {_contact_height_label(psm.right_wrist_y_at_contact)}",
         "",
-        "## Swing Dynamics",
-        f"Torso rotation change (prep→follow-through): {_fmt(psm.torso_rotation_delta)}° [target: 30–60° for groundstrokes]",
-        f"Stance width (normalized to hip width): {_fmt(psm.stance_width_mean)} [target: 1.2–1.8]",
+        "## Movement Dynamics",
+        f"Torso rotation change: {_fmt(psm.torso_rotation_delta)}°",
+        f"Stance width (normalized to hip width): {_fmt(psm.stance_width_mean)}",
         f"CoM lateral range: {_fmt(psm.com_x_range)}",
         "",
         "## Full-Window Averages (context only)",
