@@ -417,7 +417,7 @@ def get_per_swing_coaching(
     results = []
     done_count = 0
 
-    with ThreadPoolExecutor(max_workers=min(total, 8)) as executor:
+    with ThreadPoolExecutor(max_workers=min(total, 3)) as executor:
         futures = {
             executor.submit(_get_single_swing_coaching, psm, fps, client, model, activity_cfg): psm
             for psm in per_swing_metrics
