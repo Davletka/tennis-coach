@@ -984,7 +984,6 @@ function LandingPage({ onSignIn }: { onSignIn: () => void }) {
 // ---------------------------------------------------------------------------
 
 const ACTIVITY_CHOICES = [
-  { id: "tennis", label: "Tennis" },
   { id: "gym", label: "Gym Workout" },
 ];
 
@@ -995,7 +994,7 @@ const ACTIVITY_CHOICES = [
 export default function AnalyzePage() {
   const { token, user, signIn } = useAuthContext();
   const { state, file, setFile, analyze, retry, reset } = useCourtCoach(token);
-  const [selectedActivity, setSelectedActivity] = useState("tennis");
+  const [selectedActivity, setSelectedActivity] = useState("gym");
 
   const handleFile = useCallback((f: File) => setFile(f), [setFile]);
   const isActive = state.phase === "uploading" || state.phase === "polling";
