@@ -15,6 +15,7 @@ import {
   CoachingPanel,
   MetricsTable,
   DetectionBadge,
+  SwingCard,
 } from "@/components/shared";
 
 // ---------------------------------------------------------------------------
@@ -226,6 +227,26 @@ function SessionCard({
             </div>
           )}
           <MetricsTable metrics={session.metrics} />
+
+          {/* Per-rep breakdown — same as analyze page */}
+          {session.per_swing_analyses && session.per_swing_analyses.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-wide text-gray-400">
+                Per-Rep Breakdown ({session.per_swing_analyses.length})
+              </p>
+              {session.per_swing_analyses.map((a) => (
+                <SwingCard
+                  key={a.swing_index}
+                  analysis={a}
+                  swingNumber={a.swing_index + 1}
+                  fps={session.fps}
+                  onSeek={() => {}}
+                  videoUrl={session.input_video_url}
+                />
+              ))}
+            </div>
+          )}
+
           <div className="flex justify-end border-t border-gray-700 pt-3">
             {confirming ? (
               <div className="flex items-center gap-2">

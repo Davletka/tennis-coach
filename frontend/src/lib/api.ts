@@ -185,6 +185,7 @@ export interface SessionSummary {
   input_video_url: string;
   metrics: MetricsResult;
   coaching: CoachingReportResult;
+  per_swing_analyses: PerSwingAnalysis[];
 }
 
 export interface SessionListResponse {

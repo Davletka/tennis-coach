@@ -481,7 +481,11 @@ def run_analysis(
                                 metrics_dict.get("detection_rate", 0.0),
                                 input_s3_key,
                                 input_s3_key,  # annotated_s3_key column: reuse input (no separate annotated video)
-                                _json.dumps(metrics_dict),
+                                _json.dumps({
+                                    **metrics_dict,
+                                    "per_swing_metrics": per_swing_metrics_dicts,
+                                    "per_swing_coaching": per_swing_coaching_dicts,
+                                }),
                                 _json.dumps(coaching_dict),
                             ),
                         )

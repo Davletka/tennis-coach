@@ -22,10 +22,13 @@ from api.models import (
     CompareResponse,
     DeltaCoachingReport,
     MetricDelta,
+    PerSwingAnalysis,
+    PerSwingMetricsResult,
     ProgressDataPoint,
     ProgressResponse,
     SessionListResponse,
     SessionSummary,
+    SwingCoachingResult,
 )
 from api.services import history, storage
 from api.settings import settings
@@ -76,20 +79,40 @@ async def get_history(
     for s in sessions_raw:
         annotated_url = storage.presigned_url(s["annotated_s3_key"])
         input_url = storage.presigned_url(s["input_s3_key"])
+        raw_metrics = s["metrics"]
+        fps = s["fps"]
+
+        # Reconstruct per-swing analyses from metrics JSON (stored nested since deploy)
+        psm_raw = raw_metrics.get("per_swing_metrics", [])
+        psc_raw = raw_metrics.get("per_swing_coaching", [])
+        psc_by_idx = {c["swing_index"]: c for c in psc_raw}
+        per_swing_analyses = [
+            PerSwingAnalysis(
+                swing_index=m["swing_index"],
+                peak_frame=m["peak_frame"],
+                window_start_frame=m["window_start_frame"],
+                window_end_frame=m["window_end_frame"],
+                metrics=PerSwingMetricsResult(**m),
+                coaching=SwingCoachingResult(**psc_by_idx.get(m["swing_index"], {"swing_index": m["swing_index"]})),
+            )
+            for m in psm_raw
+        ]
+
         summaries.append(
             SessionSummary(
                 session_id=s["id"],
                 job_id=s["job_id"],
                 recorded_at=s["recorded_at"],
                 original_filename=s.get("original_filename"),
-                fps=s["fps"],
+                fps=fps,
                 total_source_frames=s["total_source_frames"],
                 frames_analyzed=s["frames_analyzed"],
                 detection_rate=s["detection_rate"],
                 annotated_video_url=annotated_url,
                 input_video_url=input_url,
-                metrics=s["metrics"],
+                metrics=raw_metrics,
                 coaching=s["coaching"],
+                per_swing_analyses=per_swing_analyses,
             )
         )
 

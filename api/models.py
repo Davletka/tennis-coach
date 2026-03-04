@@ -198,6 +198,7 @@ class SessionSummary(BaseModel):
     input_video_url: str
     metrics: dict
     coaching: dict
+    per_swing_analyses: List[PerSwingAnalysis] = []
 
 
 class SessionListResponse(BaseModel):
