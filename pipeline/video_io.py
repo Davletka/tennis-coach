@@ -47,16 +47,26 @@ def extract_frames(
     else:
         indices = set(range(0, effective_total, stride))
 
-    frames: List[np.ndarray] = []
-    frame_idx = 0
+    # Downscale 4K+ videos to 1080p before pose detection — MediaPipe doesn't
+    # need full resolution and decoding/storing 4K frames is very slow.
+    MAX_DIM = 1080
+    width  = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    scale = min(1.0, MAX_DIM / max(width, height))
 
-    while True:
+    frames: List[np.ndarray] = []
+    sorted_indices = sorted(indices)
+
+    for idx in sorted_indices:
+        cap.set(cv2.CAP_PROP_POS_FRAMES, idx)
         ret, frame = cap.read()
         if not ret:
-            break
-        if frame_idx in indices:
-            frames.append(frame)
-        frame_idx += 1
+            continue
+        if scale < 1.0:
+            new_w = int(width * scale)
+            new_h = int(height * scale)
+            frame = cv2.resize(frame, (new_w, new_h), interpolation=cv2.INTER_AREA)
+        frames.append(frame)
 
     cap.release()
     return frames, fps, total
