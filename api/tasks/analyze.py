@@ -253,7 +253,7 @@ def run_analysis(
             # 3. Pose detection (progress 25 → 55)
             # ----------------------------------------------------------------
             _progress(25, "Running pose detection")
-            with PoseDetector() as detector:
+            with PoseDetector(fps=fps) as detector:
                 pose_results = []
                 n = len(frames)
                 for i, frame in enumerate(frames):

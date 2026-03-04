@@ -36,7 +36,7 @@ POSE_CONNECTIONS = [
 ]
 
 # Visibility threshold — landmarks below this are treated as missing
-VISIBILITY_THRESHOLD = 0.5
+VISIBILITY_THRESHOLD = 0.35
 
 # Maximum frames to process (≈10s at 30fps)
 MAX_FRAMES = 300

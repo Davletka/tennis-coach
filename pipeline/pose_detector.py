@@ -96,9 +96,10 @@ class PoseDetector:
 
     def __init__(
         self,
-        model_complexity: int = 1,
+        model_complexity: int = 2,
         min_detection_confidence: float = 0.5,
         min_tracking_confidence: float = 0.5,
+        fps: float = 30.0,
     ) -> None:
         model_path = _ensure_model(model_complexity)
 
@@ -114,8 +115,9 @@ class PoseDetector:
             min_tracking_confidence=min_tracking_confidence,
         )
         self._landmarker = mp.tasks.vision.PoseLandmarker.create_from_options(options)
-        # Monotonically increasing timestamp (ms); assume ~30 fps
-        self._timestamp_ms: int = 0
+        # Frame interval in ms derived from actual video FPS
+        self._frame_interval_ms: float = 1000.0 / max(fps, 1.0)
+        self._timestamp_ms: float = 0.0
 
     def detect(
         self, frame: np.ndarray, frame_index: int = 0
@@ -124,11 +126,11 @@ class PoseDetector:
 
         Returns a LandmarkResult or None if no pose detected.
         """
-        self._timestamp_ms += 33  # ~30 fps cadence
+        self._timestamp_ms += self._frame_interval_ms
 
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-        result = self._landmarker.detect_for_video(mp_image, self._timestamp_ms)
+        result = self._landmarker.detect_for_video(mp_image, int(self._timestamp_ms))
 
         if not result.pose_landmarks:
             return None
