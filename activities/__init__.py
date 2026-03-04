@@ -16,8 +16,8 @@ The pipeline, API, and frontend need zero changes for new activities.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Callable, Dict, List
+from dataclasses import dataclass, field
+from typing import Callable, Dict, List, Optional
 
 
 @dataclass
@@ -50,6 +50,10 @@ class ActivityConfig:
     # Receives the full List[FrameMetrics] and returns List[SwingEvent].
     # SwingEvent.wrist_speed is repurposed as "event intensity" per activity.
     detect_events: Callable
+
+    # Optional post-detection filter: (events, frame_metrics) -> filtered events
+    # Used to drop false positives and classify motion_type on each event.
+    filter_events: Optional[Callable] = None
 
 
 # ---------------------------------------------------------------------------

@@ -112,6 +112,7 @@ export interface PerSwingMetricsResult {
   torso_rotation_max: number | null;
   stance_width_mean: number | null;
   com_x_range: number | null;
+  motion_type: string;
 }
 
 export interface SwingCoachingResult {

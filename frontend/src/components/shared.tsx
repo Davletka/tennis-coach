@@ -319,6 +319,11 @@ export function SwingCard({
         <span className="flex-shrink-0 rounded-full bg-green-900/60 px-2.5 py-0.5 text-xs font-bold text-green-400">
           #{swingNumber}
         </span>
+        {m.motion_type && m.motion_type !== "unknown" && (
+          <span className="flex-shrink-0 rounded-full bg-blue-900/50 px-2 py-0.5 text-xs font-medium text-blue-300 capitalize">
+            {m.motion_type}
+          </span>
+        )}
         <button
           onClick={() => onSeek(peakTimeSecs)}
           className="flex-shrink-0 rounded bg-gray-800 px-2 py-0.5 text-xs text-gray-300 hover:bg-gray-700 hover:text-white transition-colors tabular-nums"

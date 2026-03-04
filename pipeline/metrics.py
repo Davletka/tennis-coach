@@ -186,6 +186,7 @@ class SwingEvent:
     frame_index: int
     wrist_speed: float
     com_x: Optional[float] = None
+    motion_type: str = "unknown"
 
 
 @dataclass
@@ -272,6 +273,9 @@ class PerSwingMetrics:
     # Wrist height relative to hips at contact (negative = wrist above hips = high contact)
     right_wrist_y_at_contact: Optional[float] = None
 
+    # Motion classification label set by activity classifier
+    motion_type: str = "unknown"
+
 
 def compute_per_swing_metrics(
     frame_metrics: List[FrameMetrics],
@@ -321,6 +325,7 @@ def compute_per_swing_metrics(
         if len(torso_in_window) >= 2:
             psm.torso_rotation_delta = float(max(torso_in_window) - min(torso_in_window))
 
+        psm.motion_type = event.motion_type
         result.append(psm)
     return result
 
@@ -349,10 +354,36 @@ def _default_detect_events(frame_metrics: List[FrameMetrics]) -> List[SwingEvent
     return events
 
 
+def _trim_idle_frames(frame_metrics: List[FrameMetrics]) -> List[FrameMetrics]:
+    """Return frame_metrics with leading/trailing idle frames removed.
+
+    An idle frame is one where all wrist speeds and joint angles are None or zero.
+    Frame index values on each FrameMetrics are preserved as-is.
+    """
+    def _is_active(fm: FrameMetrics) -> bool:
+        motion_values = [
+            fm.right_wrist_speed, fm.left_wrist_speed,
+            fm.right_knee_angle, fm.left_knee_angle,
+            fm.right_elbow_angle, fm.left_elbow_angle,
+        ]
+        return any(v is not None and v != 0 for v in motion_values)
+
+    first = 0
+    while first < len(frame_metrics) and not _is_active(frame_metrics[first]):
+        first += 1
+
+    last = len(frame_metrics) - 1
+    while last > first and not _is_active(frame_metrics[last]):
+        last -= 1
+
+    return frame_metrics[first:last + 1] if first <= last else frame_metrics
+
+
 def aggregate_metrics(
     frame_metrics: List[FrameMetrics],
     pose_results: List[Optional[LandmarkResult]],
     detect_events_fn: Optional[Callable] = None,
+    filter_events_fn: Optional[Callable] = None,
 ) -> AggregatedMetrics:
     """Aggregate per-frame metrics into a summary.
 
@@ -383,8 +414,16 @@ def aggregate_metrics(
     if com_vals:
         agg.com_x_range = float(max(com_vals) - min(com_vals))
 
+    # Trim idle frames before event detection
+    trimmed = _trim_idle_frames(frame_metrics)
+
     # Event detection — delegate to provided function or use default tennis detector
     detector = detect_events_fn if detect_events_fn is not None else _default_detect_events
-    agg.swing_events = detector(frame_metrics)
+    agg.swing_events = detector(trimmed)
+
+    # Activity-specific filtering
+    if filter_events_fn is not None:
+        agg.swing_events = filter_events_fn(agg.swing_events, trimmed)
+
     agg.swing_count = len(agg.swing_events)
     return agg

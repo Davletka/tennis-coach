@@ -140,6 +140,7 @@ class PerSwingMetricsResult(BaseModel):
     torso_rotation_max: Optional[float] = None
     stance_width_mean: Optional[float] = None
     com_x_range: Optional[float] = None
+    motion_type: str = "unknown"
 
 
 class SwingCoachingResult(BaseModel):

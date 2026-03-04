@@ -37,6 +37,7 @@ def _metrics_from_dict(d: dict):
             frame_index=e["frame_index"],
             wrist_speed=e["wrist_speed"],
             com_x=e.get("com_x"),
+            motion_type=e.get("motion_type", "unknown"),
         )
         for e in d.get("swing_events", [])
     ]
@@ -91,6 +92,7 @@ def _per_swing_from_dict(d: dict):
         torso_rotation_max=d.get("torso_rotation_max"),
         stance_width_mean=d.get("stance_width_mean"),
         com_x_range=d.get("com_x_range"),
+        motion_type=d.get("motion_type", "unknown"),
     )
 
 
@@ -282,6 +284,7 @@ def run_analysis(
             agg = aggregate_metrics(
                 frame_metrics, pose_results,
                 detect_events_fn=activity_cfg.detect_events,
+                filter_events_fn=activity_cfg.filter_events,
             )
 
             # Compute per-event metrics using activity window sizes
@@ -310,6 +313,7 @@ def run_analysis(
                         "frame_index": e.frame_index,
                         "wrist_speed": round(e.wrist_speed, 4),
                         "com_x": round(e.com_x, 3) if e.com_x is not None else None,
+                        "motion_type": e.motion_type,
                     }
                     for e in agg.swing_events
                 ],
@@ -335,6 +339,7 @@ def run_analysis(
                     "torso_rotation_max": round(p.torso_rotation_max, 1) if p.torso_rotation_max is not None else None,
                     "stance_width_mean": round(p.stance_width_mean, 3) if p.stance_width_mean is not None else None,
                     "com_x_range": round(p.com_x_range, 3) if p.com_x_range is not None else None,
+                    "motion_type": p.motion_type,
                 }
                 for p in per_swing_list
             ]

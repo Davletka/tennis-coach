@@ -4,6 +4,7 @@ Uses tool_use to guarantee valid structured JSON output.
 """
 from __future__ import annotations
 
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from typing import List, Optional
 
@@ -400,7 +401,7 @@ def get_per_swing_coaching(
     activity_cfg=None,
 ) -> List[SwingCoaching]:
     """
-    Call Claude once per event so progress can be reported after each one.
+    Call Claude once per event in parallel, then sort by swing_index.
     on_swing_done(done: int, total: int) is called after each event completes.
     ``activity_cfg`` selects the correct per-event system prompt and labels.
     """
@@ -408,9 +409,20 @@ def get_per_swing_coaching(
         return []
 
     client = anthropic.Anthropic(api_key=api_key)
+    total = len(per_swing_metrics)
     results = []
-    for psm in per_swing_metrics:
-        results.append(_get_single_swing_coaching(psm, fps, client, model, activity_cfg=activity_cfg))
-        if on_swing_done is not None:
-            on_swing_done(len(results), len(per_swing_metrics))
+    done_count = 0
+
+    with ThreadPoolExecutor(max_workers=min(total, 8)) as executor:
+        futures = {
+            executor.submit(_get_single_swing_coaching, psm, fps, client, model, activity_cfg): psm
+            for psm in per_swing_metrics
+        }
+        for future in as_completed(futures):
+            results.append(future.result())
+            done_count += 1
+            if on_swing_done is not None:
+                on_swing_done(done_count, total)
+
+    results.sort(key=lambda sc: sc.swing_index)
     return results

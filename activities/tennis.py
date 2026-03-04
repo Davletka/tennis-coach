@@ -36,6 +36,23 @@ RULES:
 # Event detection
 # ---------------------------------------------------------------------------
 
+def _classify_tennis_swing(event, frame_metrics: list) -> str:
+    """Classify a tennis swing event as serve, forehand, or backhand."""
+    idx = event.frame_index
+    if idx >= len(frame_metrics):
+        return "unknown"
+    fm = frame_metrics[idx]
+    # Serve: right wrist well above hips at peak
+    if fm.right_wrist_relative_y is not None and fm.right_wrist_relative_y < -0.25:
+        return "serve"
+    # Forehand: right wrist faster than left at peak
+    rws = fm.right_wrist_speed or 0.0
+    lws = fm.left_wrist_speed or 0.0
+    if rws >= lws:
+        return "forehand"
+    return "backhand"
+
+
 def detect_tennis_swings(frame_metrics: list) -> list:
     """Detect swing events via combined wrist speed peaks."""
     from pipeline.metrics import SwingEvent
@@ -60,7 +77,38 @@ def detect_tennis_swings(frame_metrics: list) -> list:
     for idx in peak_indices:
         speed = combined[idx]
         com_x = frame_metrics[idx].com_x if idx < len(frame_metrics) else None
-        events.append(SwingEvent(frame_index=idx, wrist_speed=speed or 0.0, com_x=com_x))
+        ev = SwingEvent(frame_index=idx, wrist_speed=speed or 0.0, com_x=com_x)
+        ev.motion_type = _classify_tennis_swing(ev, frame_metrics)
+        events.append(ev)
+    return events
+
+
+def filter_tennis_events(events: list, frame_metrics: list) -> list:
+    """Drop false-positive swings using pose plausibility and consistency checks."""
+    from config import WRIST_SPEED_THRESHOLD
+
+    if not events:
+        return events
+
+    n = len(frame_metrics)
+    # 1. Pose plausibility: wrist speed at peak must exceed 1.5× threshold
+    plausibility_threshold = WRIST_SPEED_THRESHOLD * 1.5
+    events = [e for e in events if e.wrist_speed >= plausibility_threshold]
+
+    if not events:
+        return events
+
+    # 2. Consistency: drop events below 25% of median peak speed
+    speeds = [e.wrist_speed for e in events]
+    median_speed = sorted(speeds)[len(speeds) // 2]
+    events = [e for e in events if e.wrist_speed >= 0.25 * median_speed]
+
+    # 3. Idle-trim: drop events within first/last 5 frames of the trimmed list
+    if n > 10:
+        first_valid = frame_metrics[0].frame_index + 5
+        last_valid  = frame_metrics[-1].frame_index - 5
+        events = [e for e in events if first_valid <= e.frame_index <= last_valid]
+
     return events
 
 
@@ -85,4 +133,5 @@ TENNIS = register(ActivityConfig(
     system_prompt=SYSTEM_PROMPT,
     per_event_system_prompt=PER_EVENT_SYSTEM_PROMPT,
     detect_events=detect_tennis_swings,
+    filter_events=filter_tennis_events,
 ))
