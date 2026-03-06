@@ -39,3 +39,19 @@ def _get_pool() -> redis.ConnectionPool:
 def get_redis_client() -> redis.Redis:
     """Return a ``redis.Redis`` instance backed by the shared pool."""
     return redis.Redis(connection_pool=_get_pool())
+
+
+def reset_pool() -> None:
+    """Disconnect and discard the current pool.
+
+    Useful for graceful shutdown or in test teardown so the next call to
+    :func:`get_redis_client` will create a fresh pool.
+    """
+    global _pool
+    with _pool_lock:
+        if _pool is not None:
+            try:
+                _pool.disconnect()
+            except Exception:
+                pass
+            _pool = None

@@ -15,7 +15,7 @@ import pytest
 
 import api.services.redis_client as redis_client_mod
 from api.services import job_store, user_store
-from api.services.redis_client import _get_pool, get_redis_client
+from api.services.redis_client import _get_pool, get_redis_client, reset_pool
 
 
 # ---------------------------------------------------------------------------
@@ -25,9 +25,9 @@ from api.services.redis_client import _get_pool, get_redis_client
 @pytest.fixture(autouse=True)
 def _reset_pool():
     """Reset the module-level pool before and after every test."""
-    redis_client_mod._pool = None
+    reset_pool()
     yield
-    redis_client_mod._pool = None
+    reset_pool()
 
 
 @pytest.fixture()

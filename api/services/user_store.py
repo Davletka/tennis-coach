@@ -78,7 +78,7 @@ def update_user(user_id: str, **fields: Any) -> None:
     raw = r.get(_user_key(user_id))
     if raw is None:
         return
-    record: Dict[str, Any] = json.loads(raw)
+    record: dict[str, Any] = json.loads(raw)
     record.update(fields)
     google_id = record.get("google_id", "")
     pipe = r.pipeline()
