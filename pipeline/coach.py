@@ -14,47 +14,194 @@ from pipeline.metrics import AggregatedMetrics
 from config import MIN_DETECTION_RATE
 
 
-SYSTEM_PROMPT = """You are an expert tennis coach with 20+ years of experience coaching players at all levels.
-You analyze video-based biomechanical data and deliver precise, actionable coaching feedback.
+# ---------------------------------------------------------------------------
+# Human-readable metric interpreters
+# Convert raw numbers → plain-language descriptions for the prompt.
+# Claude sees the description + number in brackets, but is instructed
+# to use only words in its output — not the numbers.
+# ---------------------------------------------------------------------------
 
-TENNIS BIOMECHANICS REFERENCE RANGES:
-- Elbow angle at contact (forehand groundstroke): 120–160° (some flexion for control)
-- Elbow angle at contact (serve / overhead): 160–180° (near-full extension at impact)
-- Knee bend during groundstroke preparation: 120–145° (athletic ready position)
-- Torso rotation change during a groundstroke: 30–60° (measures hip-to-shoulder kinematic chain; below 20° = insufficient rotation)
-- Stance width (normalized to hip width): 1.2–1.8 for groundstrokes (below 1.0 = too narrow; above 2.2 = too wide)
-- Shoulder angle (elbow–shoulder–hip): 70–100° at contact for most groundstrokes
-- Wrist height relative to hips at contact: negative value = wrist above hips (good for flat/topspin); strongly positive = contact point too low
+def _describe_elbow(angle: Optional[float]) -> str:
+    if angle is None:
+        return "нет данных"
+    if angle < 90:
+        return f"сильно согнута (глубокий хват) [{angle:.0f}°]"
+    elif angle < 115:
+        return f"хорошо согнута [{angle:.0f}°]"
+    elif angle < 145:
+        return f"слегка согнута [{angle:.0f}°]"
+    elif angle < 165:
+        return f"почти прямая [{angle:.0f}°]"
+    else:
+        return f"полностью выпрямлена [{angle:.0f}°]"
 
-RULES:
-- Always reference specific numbers from the provided metrics.
-- Be direct and avoid generic advice without a target angle or metric value.
-- Every suggestion must be tied to a measurable metric.
-- Give BALANCED analysis across all four areas: swing mechanics, footwork, stance/posture, and tactics.
-- Do NOT fixate on wrist speed — evaluate the full kinematic chain: lower body → hips → core → shoulder → elbow.
-- If a metric is within the healthy reference range, acknowledge it positively rather than manufacturing a problem.
+
+def _describe_knee(angle: Optional[float]) -> str:
+    if angle is None:
+        return "нет данных"
+    if angle < 110:
+        return f"очень глубокое приседание [{angle:.0f}°]"
+    elif angle < 130:
+        return f"глубоко согнуты — отличная атлетическая стойка [{angle:.0f}°] ✓"
+    elif angle < 150:
+        return f"хорошо согнуты [{angle:.0f}°] ✓"
+    elif angle < 165:
+        return f"слегка согнуты, можно ниже [{angle:.0f}°]"
+    else:
+        return f"почти прямые — нужно согнуть ниже [{angle:.0f}°]"
+
+
+def _describe_torso_rotation(delta: Optional[float]) -> str:
+    if delta is None:
+        return "нет данных"
+    if delta < 10:
+        return f"корпус почти не разворачивается — удар только рукой [{delta:.0f}°]"
+    elif delta < 25:
+        return f"слабый поворот корпуса [{delta:.0f}°]"
+    elif delta < 45:
+        return f"хороший поворот корпуса [{delta:.0f}°] ✓"
+    else:
+        return f"отличный поворот корпуса — тело работает хорошо [{delta:.0f}°] ✓"
+
+
+def _describe_torso_at_contact(angle: Optional[float]) -> str:
+    if angle is None:
+        return "нет данных"
+    if angle < 10:
+        return f"корпус смотрит прямо на сетку [{angle:.0f}°]"
+    elif angle < 25:
+        return f"небольшой разворот в сторону удара [{angle:.0f}°]"
+    elif angle < 45:
+        return f"хороший разворот плеч [{angle:.0f}°] ✓"
+    else:
+        return f"сильный разворот корпуса [{angle:.0f}°]"
+
+
+def _describe_stance(width: Optional[float]) -> str:
+    if width is None:
+        return "нет данных"
+    if width < 0.9:
+        return f"стойка слишком узкая, ноги близко друг к другу [{width:.1f}×]"
+    elif width < 1.2:
+        return f"стойка немного узковата [{width:.1f}×]"
+    elif width < 1.8:
+        return f"правильная ширина стойки [{width:.1f}×] ✓"
+    elif width < 2.2:
+        return f"стойка чуть широковата [{width:.1f}×]"
+    else:
+        return f"стойка слишком широкая [{width:.1f}×]"
+
+
+def _describe_wrist_height(val: Optional[float]) -> str:
+    if val is None:
+        return "нет данных"
+    if val < -0.15:
+        return f"удар на уровне плеч или выше — очень высокий контакт"
+    elif val < 0:
+        return f"удар выше бёдер — хорошая точка контакта ✓"
+    elif val < 0.15:
+        return f"удар на уровне бёдер"
+    else:
+        return f"удар ниже бёдер — точка контакта слишком низко"
+
+
+def _describe_com_range(val: Optional[float]) -> str:
+    if val is None:
+        return "нет данных"
+    if val < 0.05:
+        return f"игрок почти не двигался [{val:.2f}]"
+    elif val < 0.15:
+        return f"небольшое перемещение по корту [{val:.2f}]"
+    elif val < 0.30:
+        return f"хорошее движение по корту [{val:.2f}] ✓"
+    else:
+        return f"активное перемещение по корту [{val:.2f}]"
+
+
+SYSTEM_PROMPT = """Ты опытный профессиональный тренер по теннису с 20+ годами опыта. 
+Ты анализируешь видео техники игрока так, как будто стоишь на корте и смотришь на него.
+
+ТВОЙ СТИЛЬ ОБЩЕНИЯ:
+- Отзывчивый, но честный — указываешь проблемы, но мотивируешь
+- Конкретный, а не общий — не "улучши технику", а "разворачивай плечи раньше"
+- Простой язык — "рука выпрямилась в момент удара", "ноги не успевают", "хороший вес на передней ноге"
+- ЗАПРЕЩЕНО: числа, градусы, "биомеханика", киновидео связи, научные термины
+
+СТРУКТУРА ОТВЕТА:
+- Swing Mechanics: что хорошо в ударе, что нужно улучшить (2-3 предложения)
+- Footwork: движение ног перед и во время удара (2 предложения)
+- Stance: положение тела, баланс, вес (2 предложения)
+- Tactics: почему этот удар полезен, где его использовать (1-2 предложения)
+- Top 3 priorities: 3 главных совета для улучшения (конкретные, осуществимые)
+- Target angles: конкретные числа ТОЛЬКО если они явно помогают
+
+ВАЖНО: Говори как человек, а не как аналитик. Будь вдохновляющим.
 """
 
-PER_SWING_SYSTEM_PROMPT = """You are an expert tennis coach with 20+ years of experience coaching players at all levels.
-You analyze video-based biomechanical data swing by swing and deliver precise, actionable coaching feedback.
+PER_EVENT_SYSTEM_PROMPT = """Ты профессиональный тренер по теннису. Комментируешь КАЖДЫЙ удар отдельно и уникально.
 
-TENNIS BIOMECHANICS REFERENCE RANGES:
-- Elbow angle at contact (forehand groundstroke): 120–160° | (serve / overhead): 160–180°
-- Knee bend during preparation: 120–145° (athletic stance)
-- Torso rotation change during swing: 30–60° — this is the kinematic chain indicator; below 20° means the hips and core are not driving the shot
-- Stance width (normalized to hip width): 1.2–1.8 for groundstrokes
-- Shoulder angle (elbow–shoulder–hip): 70–100° at contact
-- Wrist height at contact: negative value = wrist above hips (desirable); strongly positive = contact point too low
+КАЖДЫЙ УДАР - ЭТО НОВАЯ ИСТОРИЯ:
+- Не повторяй один и тот же совет на разные удары
+- Найди уникальные сильные и слабые стороны каждого удара
+- Говори, как если бы смотрел на монитор в реальном времени
 
-RULES:
-- Analyze each swing individually — do NOT repeat identical advice for every swing.
-- Prioritize "At Contact Point" metrics over window averages for mechanics feedback.
-- Reference specific numbers from the metrics provided.
-- Every suggestion must be tied to a measurable metric from that swing's window.
-- Give BALANCED analysis covering the full kinematic chain: lower body → hips → core → shoulder → elbow.
-- Do NOT focus excessively on wrist speed — it is only a proxy for racket head speed, not a technique target.
-- If a metric is within the healthy reference range, acknowledge it rather than inventing issues.
+ЯЗЫК:
+- Простой, как разговор на корте
+- "Рука ушла слишком далеко назад", "отличный контакт!", "ноги готовы"
+- БЕЗ чисел, градусов, терминов
+
+ОДИН КОММЕНТАРИЙ - ОДНА ИДЕЯ:
+- Quick note: 1 предложение о главном (хорошо или нужно улучшить)
+- Mechanics: что хорошо/плохо в ударе (1-2 предложения)
+- Footwork: были ли ноги готовы (1 предложение)
+- Stance: как выглядел баланс (1 предложение)
+- Tactics: зачем этот удар, где его использовать (1 предложение)
+- Top 3: 3 совета ДЛЯ ЭТОГО УДАРА (не общие)
+
+ЭНЕРГИЯ: Будь энергичным, мотивирующим, как РЕАЛЬНЫЙ тренер на корте!
 """
+
+# SYSTEM_PROMPT = """You are an expert tennis coach with 20+ years of experience coaching players at all levels.
+# You analyze video-based biomechanical data and deliver precise, actionable coaching feedback.
+
+# TENNIS BIOMECHANICS REFERENCE RANGES:
+# - Elbow angle at contact (forehand groundstroke): 120–160° (some flexion for control)
+# - Elbow angle at contact (serve / overhead): 160–180° (near-full extension at impact)
+# - Knee bend during groundstroke preparation: 120–145° (athletic ready position)
+# - Torso rotation change during a groundstroke: 30–60° (measures hip-to-shoulder kinematic chain; below 20° = insufficient rotation)
+# - Stance width (normalized to hip width): 1.2–1.8 for groundstrokes (below 1.0 = too narrow; above 2.2 = too wide)
+# - Shoulder angle (elbow–shoulder–hip): 70–100° at contact for most groundstrokes
+# - Wrist height relative to hips at contact: negative value = wrist above hips (good for flat/topspin); strongly positive = contact point too low
+
+# RULES:
+# - Always reference specific numbers from the provided metrics.
+# - Be direct and avoid generic advice without a target angle or metric value.
+# - Every suggestion must be tied to a measurable metric.
+# - Give BALANCED analysis across all four areas: swing mechanics, footwork, stance/posture, and tactics.
+# - Do NOT fixate on wrist speed — evaluate the full kinematic chain: lower body → hips → core → shoulder → elbow.
+# - If a metric is within the healthy reference range, acknowledge it positively rather than manufacturing a problem.
+# """
+
+# PER_SWING_SYSTEM_PROMPT = """You are an expert tennis coach with 20+ years of experience coaching players at all levels.
+# You analyze video-based biomechanical data swing by swing and deliver precise, actionable coaching feedback.
+
+# TENNIS BIOMECHANICS REFERENCE RANGES:
+# - Elbow angle at contact (forehand groundstroke): 120–160° | (serve / overhead): 160–180°
+# - Knee bend during preparation: 120–145° (athletic stance)
+# - Torso rotation change during swing: 30–60° — this is the kinematic chain indicator; below 20° means the hips and core are not driving the shot
+# - Stance width (normalized to hip width): 1.2–1.8 for groundstrokes
+# - Shoulder angle (elbow–shoulder–hip): 70–100° at contact
+# - Wrist height at contact: negative value = wrist above hips (desirable); strongly positive = contact point too low
+
+# RULES:
+# - Analyze each swing individually — do NOT repeat identical advice for every swing.
+# - Prioritize "At Contact Point" metrics over window averages for mechanics feedback.
+# - Reference specific numbers from the metrics provided.
+# - Every suggestion must be tied to a measurable metric from that swing's window.
+# - Give BALANCED analysis covering the full kinematic chain: lower body → hips → core → shoulder → elbow.
+# - Do NOT focus excessively on wrist speed — it is only a proxy for racket head speed, not a technique target.
+# - If a metric is within the healthy reference range, acknowledge it rather than inventing issues.
+# """
 
 # ---------------------------------------------------------------------------
 # Tool schemas — force Claude to return validated structured output
@@ -209,46 +356,38 @@ def _build_user_prompt(
     duration_s = total_source_frames / max(fps, 1.0)
     detection_pct = agg.detection_rate * 100
 
-    # Use activity-specific labels when available
     event_plural = activity_cfg.event_plural if activity_cfg else "swings"
-    event_metric_label = activity_cfg.event_metric_label if activity_cfg else "Wrist speeds at peaks"
 
     low_detection_warning = ""
     if agg.detection_rate < MIN_DETECTION_RATE:
         low_detection_warning = (
-            "\n⚠️  WARNING: Pose was detected in only "
-            f"{detection_pct:.0f}% of frames — confidence is reduced.\n"
+            f"\n⚠️  Поза определена только в {detection_pct:.0f}% кадров — уверенность снижена.\n"
         )
 
-    swing_speeds = [f"{e.wrist_speed:.3f}" for e in agg.swing_events]
-    swing_speeds_str = ", ".join(swing_speeds) if swing_speeds else "none detected"
-
-    def fmt(val: Optional[float], unit: str = "°") -> str:
-        return f"{val:.1f}{unit}" if val is not None else "N/A"
+    shot_types = list({e.motion_type for e in agg.swing_events if e.motion_type != "unknown"})
+    shot_types_str = ", ".join(shot_types) if shot_types else "не определён"
 
     lines = [
-        "## Video Context",
-        f"- Duration: {duration_s:.1f}s",
-        f"- Frames analyzed: {agg.frames_analyzed}",
-        f"- Pose detection rate: {detection_pct:.0f}%",
-        f"- {event_plural.capitalize()} detected: {agg.swing_count}",
+        "## Контекст видео",
+        f"- Длительность: {duration_s:.1f}с",
+        f"- Обнаружено ударов: {agg.swing_count} ({shot_types_str})",
+        f"- Качество обнаружения позы: {detection_pct:.0f}%",
         low_detection_warning,
         "",
-        "## Joint Angle Statistics (mean / min / max / std)",
-        f"- Right elbow:    {fmt(agg.right_elbow.mean)} / {fmt(agg.right_elbow.min)} / {fmt(agg.right_elbow.max)} / {fmt(agg.right_elbow.std)}",
-        f"- Left elbow:     {fmt(agg.left_elbow.mean)} / {fmt(agg.left_elbow.min)} / {fmt(agg.left_elbow.max)} / {fmt(agg.left_elbow.std)}",
-        f"- Right shoulder: {fmt(agg.right_shoulder.mean)} / {fmt(agg.right_shoulder.min)} / {fmt(agg.right_shoulder.max)} / {fmt(agg.right_shoulder.std)}",
-        f"- Left shoulder:  {fmt(agg.left_shoulder.mean)} / {fmt(agg.left_shoulder.min)} / {fmt(agg.left_shoulder.max)} / {fmt(agg.left_shoulder.std)}",
-        f"- Right knee:     {fmt(agg.right_knee.mean)} / {fmt(agg.right_knee.min)} / {fmt(agg.right_knee.max)} / {fmt(agg.right_knee.std)}",
-        f"- Left knee:      {fmt(agg.left_knee.mean)} / {fmt(agg.left_knee.min)} / {fmt(agg.left_knee.max)} / {fmt(agg.left_knee.std)}",
+        "## Положение рук (средние значения за всю сессию)",
+        f"- Правый локоть: {_describe_elbow(agg.right_elbow.mean)}",
+        f"- Левый локоть:  {_describe_elbow(agg.left_elbow.mean)}",
         "",
-        "## Body Mechanics",
-        f"- Torso rotation (mean/max): {fmt(agg.torso_rotation_mean)} / {fmt(agg.torso_rotation_max)}",
-        f"- Stance width (normalized to hip width, mean): {fmt(agg.stance_width_mean, '')}",
-        f"- CoM lateral range: {fmt(agg.com_x_range, ' (normalized 0-1)')}",
+        "## Положение ног",
+        f"- Правое колено: {_describe_knee(agg.right_knee.mean)}",
+        f"- Левое колено:  {_describe_knee(agg.left_knee.mean)}",
+        f"- Ширина стойки: {_describe_stance(agg.stance_width_mean)}",
         "",
-        f"## {event_plural.capitalize()}",
-        f"- {event_metric_label}: {swing_speeds_str}",
+        "## Работа корпуса",
+        f"- Поворот корпуса: {_describe_torso_rotation(agg.torso_rotation_max)}",
+        f"- Перемещение по корту: {_describe_com_range(agg.com_x_range)}",
+        "",
+        "ВАЖНО ДЛЯ ОТВЕТА: Описывай движения словами — НЕ упоминай цифры в скобках, градусы или технические термины.",
     ]
 
     return "\n".join(lines)
@@ -258,56 +397,49 @@ def _fmt(v: Optional[float]) -> str:
     return f"{v:.1f}" if v is not None else "?"
 
 
-def _build_swing_prompt(psm, fps: float, activity_cfg=None) -> str:
+def _build_swing_prompt(psm, fps: float, activity_cfg=None, model_prediction: Optional[dict] = None) -> str:
     t = psm.peak_frame / max(fps, 1.0)
     event_singular = activity_cfg.event_singular if activity_cfg else "swing"
-    event_metric_label = activity_cfg.event_metric_label if activity_cfg else "Peak wrist speed"
-
-    def _contact_height_label(v: Optional[float]) -> str:
-        if v is None:
-            return "?"
-        if v < -0.15:
-            return f"{v:.2f} (above shoulders — very high contact)"
-        if v < 0:
-            return f"{v:.2f} (above hips — ideal zone)"
-        if v < 0.15:
-            return f"{v:.2f} (at hip level)"
-        return f"{v:.2f} (below hips — contact point too low)"
 
     motion_type = getattr(psm, "motion_type", "unknown")
-    motion_label = f" · {motion_type}" if motion_type and motion_type != "unknown" else ""
+    SHOT_NAMES = {"forehand": "форхенд", "backhand": "бэкхенд", "serve": "подача", "unknown": "удар"}
+    shot_name = SHOT_NAMES.get(motion_type, motion_type)
 
     lines = [
-        f"{event_singular.capitalize()} {psm.swing_index + 1}{motion_label} (frame {psm.peak_frame}, t={t:.1f}s)",
-        f"Exercise type: {motion_type}" if motion_type and motion_type != "unknown" else "Exercise type: unknown",
-        f"Window: frames {psm.window_start_frame}–{psm.window_end_frame}",
-        f"{event_metric_label}: {psm.peak_wrist_speed:.4f}",
+        f"## Удар #{psm.swing_index + 1} — {shot_name} (момент t={t:.1f}с)",
         "",
-        "## At Peak (peak ± 2 frames) — use these for mechanics feedback",
-        f"Right elbow at peak:    {_fmt(psm.right_elbow_at_contact)}°",
-        f"Left elbow at peak:     {_fmt(psm.left_elbow_at_contact)}°",
-        f"Right shoulder at peak: {_fmt(psm.right_shoulder_at_contact)}°",
-        f"Left shoulder at peak:  {_fmt(psm.left_shoulder_at_contact)}°",
-        f"Right knee at peak:     {_fmt(psm.right_knee_at_contact)}°",
-        f"Left knee at peak:      {_fmt(psm.left_knee_at_contact)}°",
-        f"Torso rotation at peak: {_fmt(psm.torso_rotation_at_contact)}°",
-        f"Wrist height (rel. hips):  {_contact_height_label(psm.right_wrist_y_at_contact)}",
+        "### В момент удара",
+        f"- Правый локоть: {_describe_elbow(psm.right_elbow_at_contact)}",
+        f"- Левый локоть:  {_describe_elbow(psm.left_elbow_at_contact)}",
+        f"- Правое колено: {_describe_knee(psm.right_knee_at_contact)}",
+        f"- Левое колено:  {_describe_knee(psm.left_knee_at_contact)}",
+        f"- Разворот корпуса в момент удара: {_describe_torso_at_contact(psm.torso_rotation_at_contact)}",
+        f"- Точка контакта (высота): {_describe_wrist_height(psm.right_wrist_y_at_contact)}",
         "",
-        "## Movement Dynamics",
-        f"Torso rotation change: {_fmt(psm.torso_rotation_delta)}°",
-        f"Stance width (normalized to hip width): {_fmt(psm.stance_width_mean)}",
-        f"CoM lateral range: {_fmt(psm.com_x_range)}",
-        "",
-        "## Full-Window Averages (context only)",
-        f"Right elbow:    mean={_fmt(psm.right_elbow.mean)}° min={_fmt(psm.right_elbow.min)}° max={_fmt(psm.right_elbow.max)}°",
-        f"Left elbow:     mean={_fmt(psm.left_elbow.mean)}° min={_fmt(psm.left_elbow.min)}° max={_fmt(psm.left_elbow.max)}°",
-        f"Right shoulder: mean={_fmt(psm.right_shoulder.mean)}° min={_fmt(psm.right_shoulder.min)}° max={_fmt(psm.right_shoulder.max)}°",
-        f"Left shoulder:  mean={_fmt(psm.left_shoulder.mean)}° min={_fmt(psm.left_shoulder.min)}° max={_fmt(psm.left_shoulder.max)}°",
-        f"Right knee:     mean={_fmt(psm.right_knee.mean)}° min={_fmt(psm.right_knee.min)}° max={_fmt(psm.right_knee.max)}°",
-        f"Left knee:      mean={_fmt(psm.left_knee.mean)}° min={_fmt(psm.left_knee.min)}° max={_fmt(psm.left_knee.max)}°",
-        f"Torso rotation: mean={_fmt(psm.torso_rotation_mean)}° max={_fmt(psm.torso_rotation_max)}°",
+        "### Динамика удара",
+        f"- Поворот корпуса за весь удар: {_describe_torso_rotation(psm.torso_rotation_delta)}",
+        f"- Ширина стойки: {_describe_stance(psm.stance_width_mean)}",
+        f"- Перемещение по корту: {_describe_com_range(psm.com_x_range)}",
     ]
-    return "\n".join(lines)
+
+    # Add model prediction block if available
+    if model_prediction:
+        score = model_prediction.get("quality_score")
+        errors = model_prediction.get("errors", [])
+        source = model_prediction.get("source", "rule")
+        lines += [
+            "",
+            f"### Оценка модели ({'ML' if source == 'ml' else 'правила'})",
+            f"- Качество техники: {score}/100" if score is not None else "",
+        ]
+        if errors:
+            lines.append(f"- Замеченные проблемы: {', '.join(errors)}")
+
+    lines += [
+        "",
+        "ВАЖНО ДЛЯ ОТВЕТА: Описывай движения словами — НЕ упоминай числа в скобках или градусы.",
+    ]
+    return "\n".join(line for line in lines if line is not None)
 
 
 # ---------------------------------------------------------------------------
@@ -383,8 +515,8 @@ def get_coaching_feedback(
     return report
 
 
-def _get_single_swing_coaching(psm, fps: float, client, model: str, activity_cfg=None) -> SwingCoaching:
-    user_prompt = _build_swing_prompt(psm, fps, activity_cfg=activity_cfg)
+def _get_single_swing_coaching(psm, fps: float, client, model: str, activity_cfg=None, model_prediction: Optional[dict] = None) -> SwingCoaching:
+    user_prompt = _build_swing_prompt(psm, fps, activity_cfg=activity_cfg, model_prediction=model_prediction)
     system = activity_cfg.per_event_system_prompt if activity_cfg else PER_SWING_SYSTEM_PROMPT
     try:
         msg = client.messages.create(
@@ -436,9 +568,21 @@ def get_per_swing_coaching(
     Call Claude once per event in parallel, then sort by swing_index.
     on_swing_done(done: int, total: int) is called after each event completes.
     ``activity_cfg`` selects the correct per-event system prompt and labels.
+    Technique model predictions are injected into each prompt when available.
     """
     if not per_swing_metrics:
         return []
+
+    # Pre-compute model predictions for all swings (fast, local inference)
+    try:
+        from pipeline.technique_model import get_model
+        technique_model = get_model()
+        model_predictions = {
+            psm.swing_index: technique_model.predict(psm)
+            for psm in per_swing_metrics
+        }
+    except Exception:
+        model_predictions = {}
 
     client = anthropic.Anthropic(api_key=api_key)
     total = len(per_swing_metrics)
@@ -447,7 +591,11 @@ def get_per_swing_coaching(
 
     with ThreadPoolExecutor(max_workers=min(total, 3)) as executor:
         futures = {
-            executor.submit(_get_single_swing_coaching, psm, fps, client, model, activity_cfg): psm
+            executor.submit(
+                _get_single_swing_coaching,
+                psm, fps, client, model, activity_cfg,
+                model_predictions.get(psm.swing_index),
+            ): psm
             for psm in per_swing_metrics
         }
         for future in as_completed(futures):

@@ -13,15 +13,24 @@ from typing import Any, Dict, List, Optional
 import anthropic
 
 
-DELTA_SYSTEM_PROMPT = """You are an expert tennis coach with 20+ years of experience.
-You are reviewing a player's progress between two training sessions.
+DELTA_SYSTEM_PROMPT = """Ты опытный тренер по силовому тренингу и функциональной подготовке с 20+ годами опыта.
+Ты анализируешь видео техники упражнения, как будто стоишь рядом в зале и смотришь на спортсмена.
 
-RULES:
-- Cite specific numbers for every observation (e.g. "right elbow mean improved from 142.3° to 156.8°, +14.5°").
-- Treat changes smaller than 1° in angle or smaller than 0.05 in normalized metrics as noise — call them "unchanged".
-- Be honest about regressions; do not soften bad news with generic encouragement.
-- No generic advice without a specific number target.
-- Respond ONLY with valid JSON matching the requested schema — no prose outside the JSON.
+ТВОЙ СТИЛЬ ОБЩЕНИЯ:
+- Отзывчивый и мотивирующий — указываешь ошибки, но вдохновляешь на исправление
+- Конкретный, практичный — "опусти бёдра ниже", "не закругляй спину", "держи локти ближе к телу"
+- Понятный язык — простые слова вместо "биомеханика", "кинематическая цепь", "амплитуда движения"
+- БЕЗ ЧИСЕЛ: не упоминай градусы, только описывай положение
+
+СТРУКТУРА ОТВЕТА:
+- Form & Technique: какие части упражнения сделаны хорошо, что нужно исправить (2-3 предложения)
+- Range of Motion: глубина приседа, амплитуда движения, "насколько глубоко ты опускаешься" (2 предложения)
+- Posture & Alignment: положение спины, головы, напряжение корпуса (2 предложения)
+- Progression: как усложнить, добавить вес или объём (1-2 предложения)
+- Top 3 priorities: 3 конкретных совета для улучшения техники
+- Target angles: рекомендуемые углы в суставах на основе анализа
+
+ВАЖНО: Будь как реальный тренер — поддерживай, мотивируй, давай чёткие команды на исправление.
 """
 
 # Metrics where a LARGER value is better (e.g. fuller elbow extension)
@@ -260,3 +269,22 @@ def get_delta_coaching(
         return r
 
     return _parse_delta_response(raw_text)
+
+
+@app.task(bind=True, max_retries=0, name="api.tasks.analyze.run_analysis")
+def run_analysis(
+    self,
+    job_id: str,
+    input_s3_key: str,
+    original_filename: str,
+    user_id: str = None,
+    resume_from: str = "start",
+    activity: str = "tennis",
+) -> None:
+    # НОВОЕ: Перезагрузить activities модуль каждый раз
+    import importlib
+    import activities
+    importlib.reload(activities)  # ← Это гарантирует свежие промты
+    
+    from pipeline.video_io import extract_frames
+    # ... остаток кода
